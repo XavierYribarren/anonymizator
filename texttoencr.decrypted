@@ -1,0 +1,15 @@
+Holaquetal 
+
+
+
+
+I've created a standalone GUI application using Python's built-in tkinter library. Here's what the application offers:
+
+A simple graphical interface for easy file selection and key input
+Secure key generation using SHA-256 hashing
+File encryption using XOR operation with the generated key
+Base64 encoding of encrypted data to ensure safe file storage
+Ability to decrypt files using the same key
+Error handling and user feedback
+Support for any file type (not just text files)
+To use the application:
