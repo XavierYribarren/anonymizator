@@ -1,52 +1,48 @@
-import sys
-import os
+import argparse
 import json
-from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QLabel, QPushButton,
-    QVBoxLayout, QFileDialog, QMessageBox, QPlainTextEdit, QInputDialog
-)
+import logging
+import os
+import sys
+
+from cryptography.hazmat.primitives import serialization
 from PyQt6.QtCore import Qt
-from cryptography.hazmat.primitives import serialization, hashes
-from cryptography.hazmat.primitives.asymmetric import rsa, padding
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from cryptography.hazmat.backends import default_backend
+from PyQt6.QtWidgets import (
+    QApplication, QFileDialog, QHBoxLayout, QInputDialog, QLabel,
+    QLineEdit, QMainWindow, QMessageBox, QPlainTextEdit, QPushButton,
+    QVBoxLayout, QWidget,
+)
+
+import crypto_utils
+
+logger = logging.getLogger(__name__)
+
+CONFIG_FILE = "anonymizator_config.json"
+# Stores only the path to the private key file — never the key itself.
 
 
-CONFIG_FILE = "decryptor_config.json"
-
-
-def load_config():
-    """ Charge la configuration enregistrée. """
+def _load_config() -> dict:
     if os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE, "r") as f:
             return json.load(f)
     return {}
 
 
-def save_config(data):
-    """ Sauvegarde la configuration (chemin de la clé privée). """
+def _save_config(data: dict):
     with open(CONFIG_FILE, "w") as f:
         json.dump(data, f)
 
 
-def clear_config():
-    """ Supprime la configuration enregistrée. """
-    if os.path.exists(CONFIG_FILE):
-        os.remove(CONFIG_FILE)
-
-
 class DropLabel(QLabel):
-    """
-    Widget pour le drag-and-drop de fichiers.
-    """
-    def __init__(self, callback, parent=None):
+    def __init__(self, text: str, callback, parent=None):
         super().__init__(parent)
         self.callback = callback
         self.setAcceptDrops(True)
-        self.setText("Glissez un fichier ici pour le déchiffrer.")
+        self.setText(text)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setStyleSheet("border: 3px dashed #0078D7; padding: 20px; font-size: 14pt;")
-        self.setFixedHeight(200)  # 🔹 Zone de drop plus grande
+        self.setStyleSheet(
+            "border: 3px dashed #0078D7; padding: 20px; font-size: 14pt;"
+        )
+        self.setFixedHeight(200)
 
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
@@ -55,176 +51,328 @@ class DropLabel(QLabel):
     def dropEvent(self, event):
         urls = event.mimeData().urls()
         if urls:
-            file_path = urls[0].toLocalFile()
-            self.callback(file_path)
+            self.callback(urls[0].toLocalFile())
 
 
 class DecryptorApp(QMainWindow):
-    """
-    Application pour déchiffrer des fichiers avec une clé privée.
-    """
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Decryptor App")
-        self.setGeometry(100, 100, 700, 500)
+        self.setWindowTitle("Anonymizator — Déchiffrement")
+        self.setGeometry(100, 100, 700, 560)
+        self.private_key = None
+        self.private_key_visible = False
 
         layout = QVBoxLayout()
 
-        # Boutons
-        self.generate_keys_button = QPushButton("🔑 Générer une nouvelle paire de clés")
-        self.generate_keys_button.clicked.connect(self.generate_keys)
-        layout.addWidget(self.generate_keys_button)
+        # Status indicator
+        status_row = QHBoxLayout()
+        self.status_dot = QLabel()
+        self.status_dot.setFixedSize(16, 16)
+        self.status_text = QLabel("Aucune clé chargée")
+        self._set_status(False)
+        status_row.addWidget(self.status_dot)
+        status_row.addWidget(self.status_text)
+        status_row.addStretch()
+        layout.addLayout(status_row)
 
-        self.load_keys_button = QPushButton("📂 Charger une clé privée existante")
-        self.load_keys_button.clicked.connect(self.load_keys)
-        layout.addWidget(self.load_keys_button)
+        # Action buttons
+        self.gen_btn = QPushButton("Générer une nouvelle paire de clés RSA-4096")
+        self.gen_btn.clicked.connect(self.generate_keys)
+        layout.addWidget(self.gen_btn)
 
-        self.forget_key_button = QPushButton("🗑️ Oublier la clé enregistrée")
-        self.forget_key_button.clicked.connect(self.forget_keys)
-        layout.addWidget(self.forget_key_button)
+        self.load_btn = QPushButton("Charger une clé privée existante")
+        self.load_btn.clicked.connect(self.load_keys)
+        layout.addWidget(self.load_btn)
 
-        self.toggle_key_button = QPushButton("👀 Afficher la clé privée")
-        self.toggle_key_button.setEnabled(False)  # Désactivé tant qu'aucune clé n'est chargée
-        self.toggle_key_button.clicked.connect(self.toggle_private_key_visibility)
-        layout.addWidget(self.toggle_key_button)
+        self.forget_btn = QPushButton("Oublier la clé enregistrée")
+        self.forget_btn.clicked.connect(self.forget_keys)
+        layout.addWidget(self.forget_btn)
 
-        # Zones d'affichage des clés
-        self.private_key_display = QPlainTextEdit()
-        self.private_key_display.setPlaceholderText("Votre clé privée s'affichera ici.")
-        self.private_key_display.setReadOnly(True)
-        self.private_key_display.setFixedHeight(80)
-        self.private_key_display.setVisible(False)  # 🔹 Caché par défaut
+        self.toggle_btn = QPushButton("Afficher la clé privée")
+        self.toggle_btn.setEnabled(False)
+        self.toggle_btn.clicked.connect(self.toggle_private_key)
+        layout.addWidget(self.toggle_btn)
 
-        self.public_key_display = QPlainTextEdit()
-        self.public_key_display.setPlaceholderText("Votre clé publique s'affichera ici.")
-        self.public_key_display.setReadOnly(True)
-        self.public_key_display.setFixedHeight(100)
+        # Private key display (hidden by default)
+        self.priv_display = QPlainTextEdit()
+        self.priv_display.setPlaceholderText("Clé privée…")
+        self.priv_display.setReadOnly(True)
+        self.priv_display.setFixedHeight(80)
+        self.priv_display.setVisible(False)
+        layout.addWidget(self.priv_display)
 
-        layout.addWidget(QLabel("Clé Publique :"))
-        layout.addWidget(self.public_key_display)
+        # Public key display with copy button
+        pub_row = QHBoxLayout()
+        pub_row.addWidget(QLabel("Clé Publique :"))
+        self.copy_btn = QPushButton("Copier")
+        self.copy_btn.setEnabled(False)
+        self.copy_btn.clicked.connect(self.copy_public_key)
+        pub_row.addWidget(self.copy_btn)
+        layout.addLayout(pub_row)
 
-        # Zone de drop de fichier (plus grande)
-        self.drop_label = DropLabel(callback=self.decrypt_file)
+        self.pub_display = QPlainTextEdit()
+        self.pub_display.setPlaceholderText("La clé publique s'affichera ici.")
+        self.pub_display.setReadOnly(True)
+        self.pub_display.setFixedHeight(100)
+        layout.addWidget(self.pub_display)
+
+        # Decryption drop zone
+        self.drop_label = DropLabel(
+            "Glissez un fichier .enc ici pour le déchiffrer", self.decrypt_file
+        )
         layout.addWidget(self.drop_label)
 
-        # Conteneur principal
-        central_widget = QWidget()
-        central_widget.setLayout(layout)
-        self.setCentralWidget(central_widget)
+        central = QWidget()
+        central.setLayout(layout)
+        self.setCentralWidget(central)
 
-        # Variable pour stocker la clé privée
-        self.private_key = None
-        self.private_key_visible = False  # 🔹 État de la visibilité
+        self._auto_load_saved_key()
 
-        # Vérifier si une clé est enregistrée
-        self.check_for_saved_key()
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
 
-    def check_for_saved_key(self):
-        """ Vérifie si une clé privée est enregistrée et la charge automatiquement. """
-        config = load_config()
-        if "private_key_path" in config:
-            self.load_keys(autoload=True)
+    def _set_status(self, loaded: bool):
+        color = "#2ecc71" if loaded else "#e74c3c"
+        self.status_dot.setStyleSheet(
+            f"background-color: {color}; border-radius: 8px;"
+        )
+
+    def _auto_load_saved_key(self):
+        config = _load_config()
+        path = config.get("private_key_path", "")
+        if not path:
+            return
+        if not os.path.exists(path):
+            _save_config({})
+            QMessageBox.warning(
+                self, "Clé Introuvable",
+                f"La clé privée enregistrée n'existe plus :\n{path}\n\n"
+                "Le chemin a été effacé de la configuration.",
+            )
+            return
+        self._load_from_path(path, silent=True)
+
+    def _load_from_path(self, path: str, silent: bool = False):
+        try:
+            with open(path, "rb") as fh:
+                pem_bytes = fh.read()
+        except Exception as exc:
+            QMessageBox.critical(self, "Erreur", f"Impossible de lire le fichier.\n{exc}")
+            return
+
+        password = None
+        if b"ENCRYPTED" in pem_bytes or pem_bytes.startswith(
+            b"-----BEGIN OPENSSH PRIVATE KEY-----"
+        ):
+            pw, ok = QInputDialog.getText(
+                self, "Mot de Passe",
+                "Mot de passe de la clé privée :",
+                QLineEdit.EchoMode.Password,
+            )
+            if not ok:
+                return
+            password = pw.encode("utf-8") if pw else None
+
+        try:
+            private_key = crypto_utils.load_private_key(pem_bytes, password=password)
+        except ValueError:
+            QMessageBox.critical(self, "Erreur", "Mot de passe incorrect ou clé invalide.")
+            return
+        except Exception as exc:
+            QMessageBox.critical(self, "Erreur", f"Impossible de charger la clé.\n{exc}")
+            return
+
+        public_pem = private_key.public_key().public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo,
+        ).decode("utf-8")
+
+        self.private_key = private_key
+        self.priv_display.setPlainText(pem_bytes.decode("utf-8", errors="replace"))
+        self.pub_display.setPlainText(public_pem)
+        self.toggle_btn.setEnabled(True)
+        self.copy_btn.setEnabled(True)
+        self._set_status(True)
+        self.status_text.setText(
+            f"Clé RSA-{private_key.key_size} bits — {os.path.basename(path)}"
+        )
+
+        if not silent:
+            _save_config({"private_key_path": path})
+            QMessageBox.information(
+                self, "Succès", f"Clé RSA-{private_key.key_size} bits chargée !"
+            )
+
+    # ------------------------------------------------------------------
+    # Slots
+    # ------------------------------------------------------------------
 
     def generate_keys(self):
-        """ Génère une nouvelle paire de clés RSA et l'affiche. """
+        pw, ok = QInputDialog.getText(
+            self, "Passphrase",
+            "Passphrase pour protéger la clé privée\n(laisser vide pour ne pas chiffrer) :",
+            QLineEdit.EchoMode.Password,
+        )
+        if not ok:
+            return
+
+        if pw:
+            pw2, ok2 = QInputDialog.getText(
+                self, "Confirmer", "Confirmer la passphrase :",
+                QLineEdit.EchoMode.Password,
+            )
+            if not ok2 or pw != pw2:
+                QMessageBox.warning(self, "Erreur", "Les passphrases ne correspondent pas.")
+                return
+
         try:
-            private_key = rsa.generate_private_key(
-                public_exponent=65537,
-                key_size=2048
+            private_key, public_key = crypto_utils.generate_rsa_keypair(4096)
+        except Exception as exc:
+            QMessageBox.critical(self, "Erreur", f"Impossible de générer les clés.\n{exc}")
+            return
+
+        pw_bytes = pw.encode("utf-8") if pw else None
+        enc_algo = (
+            serialization.BestAvailableEncryption(pw_bytes)
+            if pw_bytes
+            else serialization.NoEncryption()
+        )
+        private_pem = private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.TraditionalOpenSSL,
+            encryption_algorithm=enc_algo,
+        ).decode("utf-8")
+
+        public_pem = public_key.public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo,
+        ).decode("utf-8")
+
+        save_path, _ = QFileDialog.getSaveFileName(
+            self, "Enregistrer la clé privée", "private_key.pem",
+            "Clés PEM (*.pem);;Tous les fichiers (*)",
+        )
+        if save_path:
+            try:
+                with open(save_path, "w") as fh:
+                    fh.write(private_pem)
+                _save_config({"private_key_path": save_path})
+            except Exception as exc:
+                QMessageBox.critical(self, "Erreur", f"Impossible d'enregistrer.\n{exc}")
+                return
+
+        self.private_key = private_key
+        self.priv_display.setPlainText(private_pem)
+        self.pub_display.setPlainText(public_pem)
+        self.toggle_btn.setEnabled(True)
+        self.copy_btn.setEnabled(True)
+        self._set_status(True)
+        self.status_text.setText("Clé RSA-4096 bits générée")
+        QMessageBox.information(self, "Succès", "Clé RSA-4096 générée avec succès !")
+
+    def load_keys(self):
+        config = _load_config()
+        saved = config.get("private_key_path", "")
+        if saved and os.path.exists(saved):
+            choice, ok = QInputDialog.getItem(
+                self, "Clé enregistrée",
+                f"Clé enregistrée :\n{saved}\n\nQue faire ?",
+                ["Charger la clé enregistrée", "Choisir une autre"],
+                0, False,
             )
-            public_key = private_key.public_key()
+            if not ok:
+                return
+            if choice == "Charger la clé enregistrée":
+                self._load_from_path(saved)
+                return
 
-            # Sérialisation des clés
-            private_pem = private_key.private_bytes(
-                encoding=serialization.Encoding.PEM,
-                format=serialization.PrivateFormat.TraditionalOpenSSL,
-                encryption_algorithm=serialization.NoEncryption()
-            ).decode("utf-8")
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Charger une clé privée", "",
+            "Clés privées (*.pem *.key *id_rsa);;Tous les fichiers (*)",
+        )
+        if path:
+            self._load_from_path(path)
 
-            public_pem = public_key.public_bytes(
-                encoding=serialization.Encoding.PEM,
-                format=serialization.PublicFormat.SubjectPublicKeyInfo
-            ).decode("utf-8")
+    def forget_keys(self):
+        _save_config({})
+        self.private_key = None
+        self.priv_display.clear()
+        self.pub_display.clear()
+        self.priv_display.setVisible(False)
+        self.private_key_visible = False
+        self.toggle_btn.setEnabled(False)
+        self.toggle_btn.setText("Afficher la clé privée")
+        self.copy_btn.setEnabled(False)
+        self._set_status(False)
+        self.status_text.setText("Aucune clé chargée")
+        QMessageBox.information(self, "Succès", "La clé enregistrée a été oubliée.")
 
-            # Mise à jour des affichages
-            self.private_key_display.setPlainText(private_pem)
-            self.public_key_display.setPlainText(public_pem)
-            self.private_key = private_key
-            self.toggle_key_button.setEnabled(True)
+    def toggle_private_key(self):
+        self.private_key_visible = not self.private_key_visible
+        self.priv_display.setVisible(self.private_key_visible)
+        self.toggle_btn.setText(
+            "Masquer la clé privée" if self.private_key_visible else "Afficher la clé privée"
+        )
 
-            # Sauvegarde optionnelle de la clé
-            save_path, _ = QFileDialog.getSaveFileName(
-                self, "Enregistrer la clé privée", "", "Clés privées (*.pem);;Tous les fichiers (*)"
+    def copy_public_key(self):
+        pem = self.pub_display.toPlainText()
+        if pem:
+            QApplication.clipboard().setText(pem)
+            QMessageBox.information(self, "Copié", "Clé publique copiée dans le presse-papier.")
+
+    def decrypt_file(self, file_path: str):
+        if not self.private_key:
+            QMessageBox.warning(
+                self, "Clé Manquante",
+                "Veuillez d'abord charger une clé privée.",
             )
-            if save_path:
-                with open(save_path, "w") as f:
-                    f.write(private_pem)
-                QMessageBox.information(self, "Succès", f"Clé privée enregistrée dans {save_path}")
-                save_config({"private_key_path": save_path})
-
-        except Exception as e:
-            QMessageBox.critical(self, "Erreur", f"Impossible de générer les clés.\nErreur: {str(e)}")
-
-    def load_keys(self, autoload=False):
-        """ Charge une clé privée existante. """
-        config = load_config()
-        if autoload and "private_key_path" in config:
-            private_key_path = config["private_key_path"]
-        else:
-            private_key_path, _ = QFileDialog.getOpenFileName(
-                self, "Charger une clé privée", "", "Clés privées (*.pem);;Tous les fichiers (*)"
-            )
-
-        if not private_key_path:
             return
 
         try:
-            with open(private_key_path, "rb") as f:
-                private_pem = f.read()
+            with open(file_path, "rb") as fh:
+                encrypted_data = fh.read()
+        except Exception as exc:
+            QMessageBox.critical(self, "Erreur", f"Impossible de lire le fichier.\n{exc}")
+            return
 
-            self.private_key = serialization.load_pem_private_key(
-                private_pem, password=None, backend=default_backend()
+        try:
+            decrypted_data = crypto_utils.decrypt_file_hybrid(encrypted_data, self.private_key)
+        except Exception as exc:
+            QMessageBox.critical(
+                self, "Erreur de Déchiffrement",
+                f"Déchiffrement échoué.\n{exc}\n\n"
+                "Vérifiez que le fichier a bien été chiffré avec votre clé publique.",
             )
+            return
 
-            # Extraction de la clé publique
-            public_pem = self.private_key.public_key().public_bytes(
-                encoding=serialization.Encoding.PEM,
-                format=serialization.PublicFormat.SubjectPublicKeyInfo
-            ).decode("utf-8")
-
-            # Affichage mis à jour
-            self.private_key_display.setPlainText(private_pem.decode("utf-8"))
-            self.public_key_display.setPlainText(public_pem)
-            self.toggle_key_button.setEnabled(True)
-
-            # Sauvegarde du chemin de la clé privée
-            save_config({"private_key_path": private_key_path})
-
-        except Exception as e:
-            QMessageBox.critical(self, "Erreur", f"Impossible de charger la clé privée.\nErreur: {str(e)}")
-
-    def forget_keys(self):
-        """ Oublie la clé enregistrée et efface les affichages. """
-        clear_config()
-        self.private_key = None
-        self.private_key_display.clear()
-        self.public_key_display.clear()
-        self.private_key_display.setVisible(False)  # 🔹 Cachée après l'oubli
-        self.toggle_key_button.setEnabled(False)
-        QMessageBox.information(self, "Succès", "La clé enregistrée a été oubliée.")
-
-    def toggle_private_key_visibility(self):
-        """ Affiche ou masque la clé privée. """
-        self.private_key_visible = not self.private_key_visible
-        self.private_key_display.setVisible(self.private_key_visible)
-        self.toggle_key_button.setText("🙈 Masquer la clé privée" if self.private_key_visible else "👀 Afficher la clé privée")
-
-    def decrypt_file(self, file_path):
-        """ Déchiffre un fichier avec la clé privée. """
-        QMessageBox.information(self, "Déchiffrement", f"Déchiffrement simulé de : {file_path}")
+        default_name = (
+            file_path[:-4] if file_path.endswith(".enc") else file_path + ".decrypted"
+        )
+        save_path, _ = QFileDialog.getSaveFileName(
+            self, "Enregistrer le fichier déchiffré", default_name,
+            "Tous les fichiers (*)",
+        )
+        if save_path:
+            try:
+                with open(save_path, "wb") as fh:
+                    fh.write(decrypted_data)
+                self.drop_label.setText(f"Déchiffrement réussi !\n{save_path}")
+                QMessageBox.information(self, "Succès", f"Fichier déchiffré :\n{save_path}")
+            except Exception as exc:
+                QMessageBox.critical(self, "Erreur", f"Impossible d'enregistrer.\n{exc}")
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Anonymizator — decryptor app")
+    parser.add_argument("--debug", action="store_true", help="Enable debug logging")
+    args = parser.parse_args()
+
+    logging.basicConfig(
+        level=logging.DEBUG if args.debug else logging.WARNING,
+        format="%(levelname)s %(name)s: %(message)s",
+    )
+
     app = QApplication(sys.argv)
     window = DecryptorApp()
     window.show()

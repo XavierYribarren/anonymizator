@@ -1,5 +1,34 @@
+# Keys and encrypted files — never commit these
+*.pem
+*.key
+*.enc
 id_rsa
 id_rsa.pub
+
+# Config files containing local paths
+config.json
+anonymizator_config.json
+decryptor_config.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual environment
 venv/
-dist/
+.venv/
+env/
+
+# PyInstaller build artifacts
 build/
+dist/
+*.spec
+
+# Test/scratch files
+texttoencr
+texttoencr.decrypted
+texttoencr.encrypted
+
+# Archives
+*.zip
