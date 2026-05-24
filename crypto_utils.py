@@ -3,17 +3,17 @@
 File format for encrypted data (.enc):
   [encrypted_aes_key  (rsa_key_size // 8 bytes)]  RSA-OAEP-encrypted AES-256 key
   [nonce              (12 bytes)]                   AES-GCM nonce
-  [tag                (16 bytes)]                   AES-GCM authentication tag
-  [ciphertext         (variable)]                   AES-GCM-encrypted payload
+  [ciphertext + tag   (variable + 16 bytes)]        AES-GCM encrypted payload with tag appended
 
-Breaking change from v1: v1 used AES-256-CFB with a 16-byte IV and RSA-2048.
-Files encrypted with v1 cannot be decrypted with this module.
+Breaking changes from previous versions:
+  v1: used AES-256-CFB with 16-byte IV and RSA-2048.
+  v2 (old): stored layout as [key][nonce][tag][ciphertext] — tag before ciphertext.
+  v2 (current): stores [key][nonce][ciphertext+tag] — matches Web Crypto API natural output.
 """
 import io
 import logging
 import os
 
-from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -48,32 +48,25 @@ def load_private_key(pem_bytes: bytes, password: bytes = None):
         except Exception as exc:
             raise ValueError(f"Failed to convert OpenSSH key: {exc}") from exc
 
-    return serialization.load_pem_private_key(
-        pem_bytes, password=password, backend=default_backend()
-    )
+    return serialization.load_pem_private_key(pem_bytes, password=password)
 
 
 def load_public_key(pem_str: str):
     """Load a PEM public key."""
-    return serialization.load_pem_public_key(
-        pem_str.encode("utf-8"), backend=default_backend()
-    )
+    return serialization.load_pem_public_key(pem_str.encode("utf-8"))
 
 
 def encrypt_file_hybrid(data: bytes, public_key) -> bytes:
     """Encrypt *data* with RSA-OAEP + AES-256-GCM.
 
     Returns bytes laid out as:
-      [encrypted_aes_key] [nonce (12 B)] [tag (16 B)] [ciphertext]
+      [encrypted_aes_key] [nonce (12 B)] [ciphertext + tag (N + 16 B)]
     """
     aes_key = os.urandom(32)  # AES-256
     nonce = os.urandom(_NONCE_SIZE)
 
     aesgcm = AESGCM(aes_key)
-    # encrypt() appends the 16-byte GCM tag to the ciphertext
-    ct_with_tag = aesgcm.encrypt(nonce, data, None)
-    ciphertext = ct_with_tag[:-_TAG_SIZE]
-    tag = ct_with_tag[-_TAG_SIZE:]
+    ct_with_tag = aesgcm.encrypt(nonce, data, None)  # ciphertext + 16-byte tag appended
 
     encrypted_aes_key = public_key.encrypt(
         aes_key,
@@ -84,7 +77,7 @@ def encrypt_file_hybrid(data: bytes, public_key) -> bytes:
         ),
     )
 
-    return encrypted_aes_key + nonce + tag + ciphertext
+    return encrypted_aes_key + nonce + ct_with_tag
 
 
 def decrypt_file_hybrid(encrypted_data: bytes, private_key) -> bytes:
@@ -96,14 +89,9 @@ def decrypt_file_hybrid(encrypted_data: bytes, private_key) -> bytes:
     if len(encrypted_data) < rsa_key_bytes + _NONCE_SIZE + _TAG_SIZE:
         raise ValueError("Encrypted data is too short or corrupted")
 
-    offset = 0
-    encrypted_aes_key = encrypted_data[offset:offset + rsa_key_bytes]
-    offset += rsa_key_bytes
-    nonce = encrypted_data[offset:offset + _NONCE_SIZE]
-    offset += _NONCE_SIZE
-    tag = encrypted_data[offset:offset + _TAG_SIZE]
-    offset += _TAG_SIZE
-    ciphertext = encrypted_data[offset:]
+    encrypted_aes_key = encrypted_data[:rsa_key_bytes]
+    nonce = encrypted_data[rsa_key_bytes:rsa_key_bytes + _NONCE_SIZE]
+    ct_with_tag = encrypted_data[rsa_key_bytes + _NONCE_SIZE:]  # ciphertext + tag
 
     aes_key = private_key.decrypt(
         encrypted_aes_key,
@@ -115,5 +103,4 @@ def decrypt_file_hybrid(encrypted_data: bytes, private_key) -> bytes:
     )
 
     aesgcm = AESGCM(aes_key)
-    # decrypt() expects ciphertext + tag concatenated
-    return aesgcm.decrypt(nonce, ciphertext + tag, None)
+    return aesgcm.decrypt(nonce, ct_with_tag, None)

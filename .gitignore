@@ -1,14 +1,12 @@
-# Keys and encrypted files — never commit these
+# Secrets — never commit
+.env
 *.pem
 *.key
-*.enc
-id_rsa
-id_rsa.pub
 
-# Config files containing local paths
-config.json
-anonymizator_config.json
-decryptor_config.json
+# Encrypted and database files
+uploads/
+*.enc
+*.db
 
 # Python
 __pycache__/
@@ -24,6 +22,19 @@ env/
 build/
 dist/
 *.spec
+*.spec.save
+
+# Config files containing local paths
+config.json
+anonymizator_config.json
+decryptor_config.json
+
+# Node (used for tooling only — not part of the app)
+node_modules/
+package-lock.json
+
+# Generated documents
+*.docx
 
 # Test/scratch files
 texttoencr

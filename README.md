@@ -5,76 +5,133 @@
 ## What it does
 
 Anonymizator lets CNRS researchers securely collect sensitive data files from
-participants or field workers. The researcher generates a key pair, shares the
-public key with data collectors, and can decrypt any file they receive — without
-the collector ever seeing the private key or the decrypted content of other files.
+participants or field workers. The researcher generates a key pair, shares a
+one-time upload link with data collectors, and can decrypt any received file —
+without the collector ever seeing the private key or the decrypted content of
+other files.
 
 ## How it works
 
-```
-RESEARCHER (researcher_app.py)
-  1. Generates RSA-4096 key pair
-  2. Shares public key with collector (Copy / Export buttons)
+```text
+RESEARCHER (browser — localhost:8000)
+  1. Generates RSA-4096 key pair in the browser
+  2. Enters the collector's email → clicks "Envoyer l'invitation"
+  3. Collector receives a one-time upload link by email
 
-COLLECTOR (encryptor_app.py)
-  3. Pastes public key (or uses a pre-configured build)
-  4. Drags & drops data file → encrypted .enc file saved automatically
+COLLECTOR (any browser — no install required)
+  4. Opens the link
+  5. Drags & drops the data file
+  6. File is encrypted in the browser before upload — the server never sees plaintext
+  7. Researcher receives a notification email
 
-RESEARCHER (researcher_app.py)
-  5. Drags & drops received .enc file → decrypted file saved locally
+RESEARCHER (browser — /decrypt)
+  8. Clicks "Déchiffrer" next to the received file
+  9. Pastes private key → decrypted file downloads automatically
 ```
 
 ## Security
 
 - **RSA-4096 + AES-256-GCM** hybrid encryption
-- **Client-side only**: the distributor never sees plaintext data
+- **Client-side only** — encryption/decryption happen entirely in the browser via the Web Crypto API; the server only stores the already-encrypted `.enc` file
 - **Private key never leaves the researcher's machine**
 - **Authenticated encryption** (GCM) prevents silent data tampering
-- Private key can be password-protected at generation time
+- One-time upload links — each link can only be used once
+- Files are deleted automatically after 21 days (configurable)
 
 ## Installation
 
 ```bash
+# Recommended: create a virtual environment first
+python3 -m venv venv && source venv/bin/activate
+
 pip install -r requirements.txt
 ```
 
-Requirements: Python 3.9+, PyQt6, cryptography, paramiko.
+Requirements: Python 3.10+.
 
 ## Usage
 
-### For the researcher
+### Web interface (recommended)
 
 ```bash
 python researcher_app.py
-# Enable verbose logging if needed:
-python researcher_app.py --debug
+# Opens http://localhost:8000 automatically
 ```
 
-1. **Clés & Déchiffrement** tab → click **Générer une nouvelle paire de clés RSA-4096**
-2. Choose a strong passphrase and save the private key file somewhere safe
-3. Click **Copier** or **Exporter (.pem)** to share the public key with collectors
-4. When you receive a `.enc` file, drag & drop it into the drop zone — the app
-   decrypts it and prompts you to save the result
-
-### For the data collector
+### VPS / server deployment
 
 ```bash
+cp .env.example .env
+# Edit .env: set BASE_URL to your public URL, configure SMTP
+uvicorn web.main:app --host 0.0.0.0 --port 8000
+```
+
+### Desktop-only apps (no server needed)
+
+```bash
+# Collector-side encryption
 python encryptor_app.py
-```
 
-1. Paste the public key received from the researcher
-2. Drag & drop the data file onto the drop zone
-3. The `.enc` file is saved automatically next to the source file
-4. Send the `.enc` file to the researcher
-
-### Standalone decryptor
-
-```bash
+# Standalone decryption
 python decryptor_app.py
 ```
 
-Same decryption workflow as the researcher app, useful if you want to distribute
-a decryption-only tool.
+## Web Interface
+
+### Configuration
+
+Copy `.env.example` to `.env` and edit as needed:
+
+```bash
+cp .env.example .env
+```
+
+Key settings:
+
+| Variable | Default | Description |
+|---|---|---|
+| `BASE_URL` | `http://localhost:8000` | Public URL for links in emails |
+| `SMTP_HOST` | — | SMTP server (leave blank to disable email) |
+| `TOKEN_EXPIRY_DAYS` | `7` | Collector link validity |
+| `FILE_EXPIRY_DAYS` | `21` | `.enc` file retention |
+| `MAX_FILE_SIZE_MB` | `500` | Upload size limit |
+
+Email is optional — if SMTP is not configured, upload links are shown directly in the UI.
+
+### Email configuration
+
+**Local development — Mailpit** (catches all emails, nothing is actually sent):
+
+```bash
+# Via Docker
+docker run -d -p 1025:1025 -p 8025:8025 axllent/mailpit
+# Or via Homebrew
+brew install mailpit && mailpit
+```
+
+`.env` for Mailpit:
+
+```env
+SMTP_HOST=localhost
+SMTP_PORT=1025
+SMTP_USER=
+SMTP_PASSWORD=
+SMTP_STARTTLS=false
+BASE_URL=http://localhost:8000
+```
+
+Emails are visible at **[http://localhost:8025](http://localhost:8025)**.
+
+**Production — Resend** (recommended, generous free tier):
+
+```env
+SMTP_HOST=smtp.resend.com
+SMTP_PORT=465
+SMTP_USER=resend
+SMTP_PASSWORD=re_xxxxxxxxxxxx   # your Resend API key
+SMTP_STARTTLS=false
+BASE_URL=https://anon.mylab.fr
+```
 
 ### Distributing a pre-configured encryptor
 
@@ -94,17 +151,18 @@ only needs to drop their file.
 
 Each `.enc` file produced by Anonymizator has the following binary layout:
 
-| Field              | Size                        | Description                          |
-|--------------------|-----------------------------|--------------------------------------|
-| `encrypted_aes_key`| `rsa_key_size / 8` bytes    | AES-256 key encrypted with RSA-OAEP  |
-| `nonce`            | 12 bytes                    | AES-GCM nonce                        |
-| `tag`              | 16 bytes                    | AES-GCM authentication tag           |
-| `ciphertext`       | variable                    | AES-GCM encrypted payload            |
+| Field | Size | Description |
+|---|---|---|
+| `encrypted_aes_key` | 512 bytes (RSA-4096) | AES-256 key encrypted with RSA-OAEP / SHA-256 |
+| `nonce` | 12 bytes | AES-GCM nonce |
+| `ciphertext + tag` | N + 16 bytes | AES-GCM encrypted payload (16-byte authentication tag appended) |
 
-For RSA-4096 keys the header is 512 + 12 + 16 = **540 bytes** before the ciphertext.
+Total overhead before the payload: **524 bytes**.
 
-> **Breaking change from v1:** v1 used AES-256-CFB with a 16-byte IV and RSA-2048.
-> Files encrypted with v1 are not compatible with this version.
+> **Breaking changes:**
+>
+> - **v1 → v2:** v1 used AES-256-CFB with a 16-byte IV and RSA-2048. Not compatible.
+> - **v2 old → v2 current:** older v2 builds stored `[nonce][tag][ciphertext]`; current builds store `[nonce][ciphertext+tag]` to match the Web Crypto API native output.
 
 ## GDPR compliance notes
 
@@ -115,6 +173,7 @@ Anonymizator supports GDPR pseudonymisation requirements (Article 4(5)) by ensur
 - No plaintext data is transmitted or stored on intermediate systems
 - The private key can be deleted after the study to make re-identification
   computationally infeasible
+- Files are automatically purged after a configurable retention period
 
 ## License
 

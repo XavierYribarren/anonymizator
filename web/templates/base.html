@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Anonymizator{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500&family=Stack&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent:              #C8F135;
+            --accent-fg:           #1A1A1A;
+            --bg:                  #EAEEE8;
+            --surface:             #FFFFFF;
+            --surface-secondary:   #F4F4F2;
+            --sidebar-bg:          #111110;
+            --sidebar-icon:        #6B6B6B;
+            --sidebar-icon-active: #FFFFFF;
+            --text-primary:        #111110;
+            --text-secondary:      #6B6B69;
+            --text-muted:          #A8A8A6;
+            --border:              rgba(0,0,0,0.08);
+            --border-strong:       rgba(0,0,0,0.15);
+            --radius-sm:           8px;
+            --radius-md:           12px;
+            --radius-lg:           20px;
+            --radius-xl:           24px;
+            --shadow-card:         0 1px 2px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.04);
+        }
+    </style>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="{% block body_class %}with-sidebar{% endblock %}">
+
+    <aside class="sidebar" aria-label="Navigation">
+        <div class="sidebar-logo">
+            <a href="/" class="logo-mark" title="Accueil">A</a>
+        </div>
+
+        <nav class="sidebar-nav">
+            <a href="/" class="sidebar-link {% block nav_home %}{% endblock %}" title="Espace chercheur">
+                <i data-lucide="home" style="width:20px;height:20px"></i>
+            </a>
+            <a href="/" class="sidebar-link {% block nav_key %}{% endblock %}" title="Clé RSA">
+                <i data-lucide="key-round" style="width:20px;height:20px"></i>
+            </a>
+            <a href="/" class="sidebar-link {% block nav_send %}{% endblock %}" title="Invitations">
+                <i data-lucide="send" style="width:20px;height:20px"></i>
+            </a>
+            <a href="/decrypt" class="sidebar-link {% block nav_decrypt %}{% endblock %}" title="Déchiffrement">
+                <i data-lucide="file-lock-2" style="width:20px;height:20px"></i>
+            </a>
+        </nav>
+
+        <div class="sidebar-avatar" title="Chercheur">Ch</div>
+    </aside>
+
+    <div class="main-wrapper">
+        <div class="topbar">
+            <div class="topbar-left">
+                <span class="topbar-title">Anonymizator</span>
+                <span class="topbar-subtitle">Chiffrement sécurisé</span>
+            </div>
+            <div class="topbar-right">
+                {% block topbar_actions %}{% endblock %}
+            </div>
+        </div>
+
+        <div class="page-content">
+            {% block content %}{% endblock %}
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <script src="/static/crypto.js"></script>
+    <script src="/static/app.js"></script>
+    {% block scripts %}{% endblock %}
+    <script>document.addEventListener('DOMContentLoaded', () => lucide.createIcons());</script>
+</body>
+</html>

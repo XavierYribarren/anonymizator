@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Anonymizator — Déchiffrement{% endblock %}
+{% block nav_decrypt %}active{% endblock %}
+
+{% block content %}
+<div class="decrypt-grid">
+
+    <!-- ── Colonne gauche : fichier chiffré ───────────────────────────────── -->
+    <div class="card">
+        <div class="card-label">Fichier chiffré</div>
+
+        <div id="drop-zone" class="drop-zone drop-zone-compact">
+            <i data-lucide="file-lock-2" style="width:28px;height:28px;color:var(--text-muted);display:block;margin:0 auto 6px"></i>
+            Glissez le fichier <strong>.enc</strong> ici
+            <span class="drop-zone-hint">ou cliquez pour choisir</span>
+        </div>
+
+        <div id="file-loaded-name" class="text-muted hidden" style="font-size:12px;margin-top:8px"></div>
+    </div>
+
+    <!-- ── Colonne droite : clé privée ───────────────────────────────────── -->
+    <div class="card">
+        <div class="card-label">Clé privée</div>
+
+        <div class="form-group">
+            <textarea id="private-key-input" class="key-terminal" rows="9"
+                placeholder="-----BEGIN PRIVATE KEY-----&#10;...&#10;-----END PRIVATE KEY-----"
+                autocomplete="off" spellcheck="false"></textarea>
+        </div>
+
+        <div class="key-security-note">
+            <i data-lucide="shield" style="width:12px;height:12px"></i>
+            Votre clé ne quitte jamais ce navigateur
+        </div>
+
+        <p class="text-muted mt-2" style="font-size:11px">
+            Clé au format <code>RSA PRIVATE KEY</code> ?<br>
+            <code>openssl pkcs8 -topk8 -nocrypt -in cle.pem -out nouvelle_cle.pem</code>
+        </p>
+    </div>
+
+    <!-- ── Footer pleine largeur : bouton + alertes ───────────────────────── -->
+    <div class="decrypt-footer">
+        <button class="btn-decrypt-main" id="btn-decrypt">Déchiffrer le fichier</button>
+
+        <div id="decrypt-error" class="alert alert-danger hidden" style="margin-top:12px"></div>
+        <div id="decrypt-success" class="alert alert-success hidden" style="margin-top:12px">
+            Fichier déchiffré et téléchargé. La clé a été effacée de la mémoire.
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/decrypt.js"></script>
+{% endblock %}
