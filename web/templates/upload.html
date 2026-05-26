@@ -16,7 +16,7 @@
             <p class="text-muted" style="text-align:center" data-i18n="upload.loading">Vérification du lien…</p>
         </div>
 
-        <div class="card upload-card hidden" id="state-invalid">
+        <div class="card upload-card hidden" id="state-invalid" data-testid="error-invalid-token">
             <div class="upload-icon-wrap">
                 <i data-lucide="alert-triangle" style="width:40px;height:40px;color:#EF4444"></i>
             </div>
@@ -26,7 +26,7 @@
             </p>
         </div>
 
-        <div class="card upload-card hidden" id="state-used">
+        <div class="card upload-card hidden" id="state-used" data-testid="error-already-used">
             <div class="upload-icon-wrap">
                 <i data-lucide="alert-triangle" style="width:40px;height:40px;color:#F59E0B"></i>
             </div>
@@ -40,14 +40,14 @@
             <div class="upload-icon-wrap">
                 <i data-lucide="shield-check" style="width:40px;height:40px;color:var(--text-primary)"></i>
             </div>
-            <div class="upload-card-title" data-i18n="upload.title">Envoi sécurisé</div>
+            <div class="upload-card-title" data-testid="upload-title" data-i18n="upload.title">Envoi sécurisé</div>
             <p class="upload-card-subtitle" data-i18n="upload.subtitle">
                 Votre fichier est chiffré dans votre navigateur.
                 Personne d'autre ne peut y accéder, même pas le serveur.
             </p>
             <p class="upload-card-mention" data-i18n="upload.trust_badge">🔒 RSA-4096 · Aucune donnée en clair</p>
 
-            <div id="drop-zone" class="drop-zone">
+            <div id="drop-zone" class="drop-zone" data-testid="upload-drop-zone">
                 <i data-lucide="upload-cloud" style="width:32px;height:32px;color:var(--text-muted);display:block;margin:0 auto 8px"></i>
                 <span data-i18n="upload.drop_label">Glissez votre fichier ici</span>
                 <span class="drop-zone-hint" data-i18n="upload.drop_sublabel">ou cliquez pour sélectionner</span>
@@ -59,7 +59,7 @@
             <div id="progress-label" class="progress-label hidden" style="margin-top:6px;text-align:center"></div>
         </div>
 
-        <div class="card upload-card hidden" id="state-success">
+        <div class="card upload-card hidden" id="state-success" data-testid="upload-success">
             <div class="upload-icon-wrap">
                 <i data-lucide="check" style="width:40px;height:40px;color:var(--accent)"></i>
             </div>

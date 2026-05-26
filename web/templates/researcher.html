@@ -17,24 +17,24 @@
         <div class="card-label" data-i18n="researcher.key_section_label">Clé de chiffrement</div>
 
         <!-- Clé chargée -->
-        <div id="key-loaded" class="hidden">
+        <div id="key-loaded" class="hidden" data-testid="key-loaded-indicator">
             <div class="status-row">
                 <div class="status-dot green dot-pulse"></div>
                 <span class="status-text" id="key-status-text">RSA-4096 chargée</span>
             </div>
             <div style="margin-bottom:12px">
-                <span class="fingerprint" id="key-fingerprint"></span>
+                <span class="fingerprint" id="key-fingerprint" data-testid="key-fingerprint"></span>
             </div>
             <button class="btn btn-ghost btn-sm" id="btn-change-key" data-i18n="researcher.key_change">Changer de clé</button>
         </div>
 
         <!-- Aucune clé -->
-        <div id="key-empty">
+        <div id="key-empty" data-testid="no-key-section">
             <div class="no-key-title" data-i18n="researcher.key_none_title">Aucune clé</div>
             <div class="no-key-subtitle" data-i18n="researcher.key_none_subtitle">Générez ou importez une clé RSA-4096</div>
 
             <div class="btn-group" style="margin-bottom:16px">
-                <button class="btn btn-primary" id="btn-generate-key" data-i18n="researcher.key_generate">Générer une paire de clés</button>
+                <button class="btn btn-primary" id="btn-generate-key" data-testid="generate-key-btn" data-i18n="researcher.key_generate">Générer une paire de clés</button>
             </div>
 
             <hr class="separator">
@@ -63,7 +63,7 @@
                     <span data-i18n="researcher.invite_collector_email">Email du collecteur</span>
                     <span class="required-star">*</span>
                 </label>
-                <input type="email" id="collector-email"
+                <input type="email" id="collector-email" data-testid="collector-email"
                     data-i18n-placeholder="researcher.invite_collector_placeholder"
                     placeholder="collecteur@exemple.fr" autocomplete="email">
             </div>
@@ -76,12 +76,12 @@
                     data-i18n-placeholder="researcher.invite_researcher_placeholder"
                     placeholder="chercheur@cnrs.fr" autocomplete="email">
             </div>
-            <button class="btn-invite" id="btn-send-invite" data-i18n="researcher.invite_submit">Envoyer l'invitation</button>
+            <button class="btn-invite" id="btn-send-invite" data-testid="send-invite-btn" data-i18n="researcher.invite_submit">Envoyer l'invitation</button>
 
             <div id="invite-result" class="hidden" style="margin-top:14px">
-                <div class="alert alert-success mb-1" id="invite-success-msg"></div>
+                <div class="alert alert-success mb-1" id="invite-success-msg" data-testid="invite-success"></div>
                 <div class="link-box mt-1">
-                    <input type="text" id="invite-link" readonly>
+                    <input type="text" id="invite-link" data-testid="invite-link" readonly>
                     <button class="btn btn-secondary btn-sm" id="btn-copy-link" data-i18n="common.copy">Copier</button>
                 </div>
             </div>
@@ -125,7 +125,7 @@
 </div>
 
 <!-- ── Modal génération de clés ───────────────────────────────────────────── -->
-<div class="modal-overlay" id="keygen-modal">
+<div class="modal-overlay" id="keygen-modal" data-testid="keygen-modal">
     <div class="modal">
         <div class="card-label" style="margin-bottom:16px" data-i18n="researcher.keygen_section_label">Nouvelle paire de clés RSA-4096</div>
 
@@ -134,7 +134,7 @@
         </div>
 
         <div id="keygen-result" class="hidden">
-            <div class="alert alert-warning mb-2" data-i18n="researcher.key_private_warning">
+            <div class="alert alert-warning mb-2" data-testid="key-warning" data-i18n="researcher.key_private_warning">
                 Sauvegardez votre clé privée maintenant. Elle ne sera plus jamais affichée.
             </div>
 
@@ -144,10 +144,10 @@
             </div>
 
             <div class="btn-group mb-1">
-                <button class="btn btn-primary" id="btn-download-privkey" data-i18n="researcher.key_private_download">
+                <button class="btn btn-primary" id="btn-download-privkey" data-testid="private-key-download" data-i18n="researcher.key_private_download">
                     Télécharger la clé privée (.pem)
                 </button>
-                <button class="btn btn-secondary" id="btn-save-pubkey" data-i18n="researcher.key_save_pubkey">
+                <button class="btn btn-secondary" id="btn-save-pubkey" data-testid="save-pubkey-btn" data-i18n="researcher.key_save_pubkey">
                     Mémoriser la clé publique
                 </button>
             </div>

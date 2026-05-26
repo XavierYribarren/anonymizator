@@ -164,6 +164,52 @@ Total overhead before the payload: **524 bytes**.
 > - **v1 → v2:** v1 used AES-256-CFB with a 16-byte IV and RSA-2048. Not compatible.
 > - **v2 old → v2 current:** older v2 builds stored `[nonce][tag][ciphertext]`; current builds store `[nonce][ciphertext+tag]` to match the Web Crypto API native output.
 
+## Tests
+
+### Python unit tests (pytest)
+
+```bash
+# Install test dependencies (in your venv)
+pip install -r requirements_test.txt
+
+# Run all unit tests
+pytest tests/unit/python/ -v
+
+# With coverage report
+pytest tests/unit/python/ --cov=web --cov-report=html
+```
+
+### JavaScript unit tests (Vitest)
+
+Requires **Node.js ≥ 18** (use `nvm use 20` if on an older default).
+
+```bash
+npm install
+npm test
+```
+
+### E2E tests (Playwright)
+
+```bash
+# First install Playwright browsers (once)
+npx playwright install chromium
+
+# Run E2E suite (starts the server automatically)
+npm run test:e2e
+
+# Interactive UI mode
+npm run test:e2e:ui
+```
+
+> E2E tests need Python dependencies installed in the active virtualenv so
+> that `uvicorn web.main:app` can start.
+
+### All tests at once
+
+```bash
+pytest tests/unit/python/ && npm test && npm run test:e2e
+```
+
 ## GDPR compliance notes
 
 Anonymizator supports GDPR pseudonymisation requirements (Article 4(5)) by ensuring:

@@ -46,7 +46,10 @@ def _public_key_fingerprint(pem: str) -> str:
       pemToBuffer strips headers + whitespace → base64-decode → DER bytes
       crypto.subtle.digest("SHA-256", ...) → hex.slice(0, 16)
     """
-    der = base64.b64decode(re.sub(r"-----[^-]+-----|[\s]", "", pem))
+    b64 = re.sub(r"-----[^-]+-----|[\s]", "", pem)
+    if not b64:
+        raise ValueError("Empty PEM payload")
+    der = base64.b64decode(b64, validate=True)
     return hashlib.sha256(der).hexdigest()[:16]
 
 _HERE = os.path.dirname(__file__)
@@ -111,7 +114,10 @@ async def decrypt_page(request: Request):
 @app.post("/api/tokens")
 @limiter.limit("20/hour")
 async def create_token(request: Request, body: TokenCreate):
-    fingerprint = _public_key_fingerprint(body.public_key)
+    try:
+        fingerprint = _public_key_fingerprint(body.public_key)
+    except Exception:
+        raise HTTPException(status_code=422, detail="Invalid public key format")
     active = await database.count_active_tokens(fingerprint)
     if active >= MAX_ACTIVE_TOKENS:
         raise HTTPException(
