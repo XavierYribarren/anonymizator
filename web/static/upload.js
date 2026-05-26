@@ -44,24 +44,33 @@ function setupUpload(tokenId) {
     }
 
     setupDropZone(dropZone, async (file) => {
+        const maxMB = window.MAX_FILE_SIZE_MB || 2;
+        if (file.size > maxMB * 1024 * 1024) {
+            dropZone.classList.add("error");
+            dropZone.innerHTML =
+                `<strong>${I18n.t("common.error")}</strong><br>` +
+                `<span class="drop-zone-hint">${I18n.t("upload.file_too_large", { max: maxMB })}</span>`;
+            return;
+        }
+
         dropZone.classList.add("hidden");
         progressWrap.classList.remove("hidden");
         progressLabel.classList.remove("hidden");
 
         try {
-            setStep("Lecture du fichier…", 10);
+            setStep(I18n.t("upload.step_reading"), 10);
             const buffer = await readFileAsBuffer(file);
 
-            setStep("Récupération de la clé publique…", 25);
+            setStep(I18n.t("upload.step_fetching_key"), 25);
             const keyResp = await fetch(`/api/tokens/${encodeURIComponent(tokenId)}/public-key`);
-            if (!keyResp.ok) throw new Error("Impossible de récupérer la clé de chiffrement.");
+            if (!keyResp.ok) throw new Error(I18n.t("upload.error_key"));
             const { public_key } = await keyResp.json();
 
-            setStep("Chiffrement en cours…", 45);
+            setStep(I18n.t("upload.step_encrypting"), 45);
             const fileBytes = new Uint8Array(buffer);
             const encrypted = await encryptFile(fileBytes, public_key);
 
-            setStep("Envoi du fichier…", 75);
+            setStep(I18n.t("upload.step_uploading"), 75);
             const formData = new FormData();
             formData.append(
                 "file",
@@ -77,10 +86,10 @@ function setupUpload(tokenId) {
 
             if (!uploadResp.ok) {
                 const err = await uploadResp.json();
-                throw new Error(err.detail || "Erreur lors de l'envoi.");
+                throw new Error(err.detail || I18n.t("upload.error_upload"));
             }
 
-            setStep("Envoyé !", 100);
+            setStep(I18n.t("upload.step_done"), 100);
             document.getElementById("state-upload").classList.add("hidden");
             document.getElementById("state-success").classList.remove("hidden");
 
@@ -90,7 +99,7 @@ function setupUpload(tokenId) {
             dropZone.classList.remove("hidden");
             dropZone.classList.add("error");
             dropZone.innerHTML =
-                `<strong>Erreur</strong><br><span class="drop-zone-hint">${err.message}</span>`;
+                `<strong>${I18n.t("common.error")}</strong><br><span class="drop-zone-hint">${err.message}</span>`;
         }
     });
 }

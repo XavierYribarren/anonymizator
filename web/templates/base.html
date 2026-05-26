@@ -29,6 +29,7 @@
         }
     </style>
     <link rel="stylesheet" href="/static/style.css">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self' https://unpkg.com; img-src 'self' data:">
 </head>
 <body class="{% block body_class %}with-sidebar{% endblock %}">
 
@@ -72,6 +73,7 @@
     </div>
 
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <script src="/static/i18n.js"></script>
     <script src="/static/crypto.js"></script>
     <script src="/static/app.js"></script>
     {% block scripts %}{% endblock %}

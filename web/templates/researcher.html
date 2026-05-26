@@ -14,7 +14,7 @@
 
     <!-- ── Card 1 : Clé RSA ───────────────────────────────────────────────── -->
     <div class="card" id="card-key">
-        <div class="card-label">Chiffrement</div>
+        <div class="card-label" data-i18n="researcher.key_section_label">Clé de chiffrement</div>
 
         <!-- Clé chargée -->
         <div id="key-loaded" class="hidden">
@@ -25,61 +25,64 @@
             <div style="margin-bottom:12px">
                 <span class="fingerprint" id="key-fingerprint"></span>
             </div>
-            <button class="btn btn-ghost btn-sm" id="btn-change-key">Changer de clé</button>
+            <button class="btn btn-ghost btn-sm" id="btn-change-key" data-i18n="researcher.key_change">Changer de clé</button>
         </div>
 
         <!-- Aucune clé -->
         <div id="key-empty">
-            <div class="no-key-title">Aucune clé</div>
-            <div class="no-key-subtitle">Générez ou importez une clé RSA-4096</div>
+            <div class="no-key-title" data-i18n="researcher.key_none_title">Aucune clé</div>
+            <div class="no-key-subtitle" data-i18n="researcher.key_none_subtitle">Générez ou importez une clé RSA-4096</div>
 
             <div class="btn-group" style="margin-bottom:16px">
-                <button class="btn btn-primary" id="btn-generate-key">Générer une paire de clés</button>
+                <button class="btn btn-primary" id="btn-generate-key" data-i18n="researcher.key_generate">Générer une paire de clés</button>
             </div>
 
             <hr class="separator">
 
             <div class="form-group">
-                <label for="paste-pubkey">Coller une clé publique existante</label>
+                <label for="paste-pubkey" data-i18n="researcher.key_paste_label">Coller une clé publique existante</label>
                 <textarea id="paste-pubkey" class="mono" rows="4"
                     placeholder="-----BEGIN PUBLIC KEY-----&#10;...&#10;-----END PUBLIC KEY-----"
                     spellcheck="false" autocomplete="off"></textarea>
             </div>
-            <button class="btn btn-secondary" id="btn-use-pasted-key">Utiliser cette clé</button>
+            <button class="btn btn-secondary" id="btn-use-pasted-key" data-i18n="researcher.key_paste_button">Utiliser cette clé</button>
         </div>
     </div>
 
     <!-- ── Card 2 : Invitation ────────────────────────────────────────────── -->
     <div class="card" id="section-invite">
-        <div class="card-label">Invitation</div>
+        <div class="card-label" data-i18n="researcher.invite_section_label">Invitation</div>
 
-        <div id="invite-no-key" class="alert alert-warning">
+        <div id="invite-no-key" class="alert alert-warning" data-i18n="researcher.invite_no_key">
             Chargez une clé de chiffrement pour créer des invitations.
         </div>
 
         <div id="invite-form" class="hidden">
             <div class="form-group">
                 <label for="collector-email">
-                    Email du collecteur <span class="required-star">*</span>
+                    <span data-i18n="researcher.invite_collector_email">Email du collecteur</span>
+                    <span class="required-star">*</span>
                 </label>
                 <input type="email" id="collector-email"
+                    data-i18n-placeholder="researcher.invite_collector_placeholder"
                     placeholder="collecteur@exemple.fr" autocomplete="email">
             </div>
             <div class="form-group">
                 <label for="researcher-email">
-                    Votre email
-                    <span style="font-weight:400;color:var(--text-muted)">(notification)</span>
+                    <span data-i18n="researcher.invite_researcher_email">Votre email</span>
+                    <span style="font-weight:400;color:var(--text-muted)" data-i18n="researcher.invite_researcher_hint">(notification)</span>
                 </label>
                 <input type="email" id="researcher-email"
+                    data-i18n-placeholder="researcher.invite_researcher_placeholder"
                     placeholder="chercheur@cnrs.fr" autocomplete="email">
             </div>
-            <button class="btn-invite" id="btn-send-invite">Envoyer l'invitation</button>
+            <button class="btn-invite" id="btn-send-invite" data-i18n="researcher.invite_submit">Envoyer l'invitation</button>
 
             <div id="invite-result" class="hidden" style="margin-top:14px">
                 <div class="alert alert-success mb-1" id="invite-success-msg"></div>
                 <div class="link-box mt-1">
                     <input type="text" id="invite-link" readonly>
-                    <button class="btn btn-secondary btn-sm" id="btn-copy-link">Copier</button>
+                    <button class="btn btn-secondary btn-sm" id="btn-copy-link" data-i18n="common.copy">Copier</button>
                 </div>
             </div>
         </div>
@@ -88,19 +91,19 @@
     <!-- ── Card 3 : Fichiers reçus ───────────────────────────────────────── -->
     <div class="card card-files">
         <div class="card-header-row">
-            <div class="card-label" style="margin-bottom:0">Fichiers reçus</div>
+            <div class="card-label" style="margin-bottom:0" data-i18n="researcher.files_section_label">Fichiers reçus</div>
             <span id="files-count" class="files-count-badge hidden"></span>
         </div>
 
-        <div id="files-no-key" class="alert alert-warning">
+        <div id="files-no-key" class="alert alert-warning" data-i18n="researcher.files_no_key">
             Chargez une clé de chiffrement pour voir vos fichiers.
         </div>
-        <div id="files-loading" class="text-muted hidden" style="padding:12px 0">Chargement…</div>
+        <div id="files-loading" class="text-muted hidden" style="padding:12px 0" data-i18n="researcher.files_loading">Chargement…</div>
 
         <div id="files-empty" class="files-empty-state hidden">
             <i data-lucide="inbox" style="width:32px;height:32px;color:var(--text-muted)"></i>
-            <div class="files-empty-text">Aucun fichier reçu</div>
-            <div class="files-empty-sub">Les fichiers apparaissent ici dès que le collecteur envoie.</div>
+            <div class="files-empty-text" data-i18n="researcher.files_empty">Aucun fichier reçu</div>
+            <div class="files-empty-sub" data-i18n="researcher.files_empty_subtitle">Les fichiers apparaissent ici dès que le collecteur envoie.</div>
         </div>
 
         <div id="files-table-wrap" class="table-wrap hidden">
@@ -124,16 +127,15 @@
 <!-- ── Modal génération de clés ───────────────────────────────────────────── -->
 <div class="modal-overlay" id="keygen-modal">
     <div class="modal">
-        <div class="card-label" style="margin-bottom:16px">Nouvelle paire de clés RSA-4096</div>
+        <div class="card-label" style="margin-bottom:16px" data-i18n="researcher.keygen_section_label">Nouvelle paire de clés RSA-4096</div>
 
-        <div id="keygen-progress" class="text-muted">
+        <div id="keygen-progress" class="text-muted" data-i18n="researcher.keygen_progress">
             Génération en cours — cela peut prendre quelques secondes…
         </div>
 
         <div id="keygen-result" class="hidden">
-            <div class="alert alert-warning mb-2">
-                <strong>Sauvegardez votre clé privée maintenant.</strong>
-                Elle ne sera plus jamais affichée.
+            <div class="alert alert-warning mb-2" data-i18n="researcher.key_private_warning">
+                Sauvegardez votre clé privée maintenant. Elle ne sera plus jamais affichée.
             </div>
 
             <div class="form-group">
@@ -142,10 +144,10 @@
             </div>
 
             <div class="btn-group mb-1">
-                <button class="btn btn-primary" id="btn-download-privkey">
+                <button class="btn btn-primary" id="btn-download-privkey" data-i18n="researcher.key_private_download">
                     Télécharger la clé privée (.pem)
                 </button>
-                <button class="btn btn-secondary" id="btn-save-pubkey">
+                <button class="btn btn-secondary" id="btn-save-pubkey" data-i18n="researcher.key_save_pubkey">
                     Mémoriser la clé publique
                 </button>
             </div>
@@ -153,7 +155,7 @@
             <p class="text-muted mt-1">La clé privée sera effacée à la fermeture de cette fenêtre.</p>
 
             <hr class="separator">
-            <button class="btn btn-ghost" id="btn-close-keygen">Fermer</button>
+            <button class="btn btn-ghost" id="btn-close-keygen" data-i18n="researcher.key_close_modal">Fermer</button>
         </div>
     </div>
 </div>

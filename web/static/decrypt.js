@@ -30,9 +30,12 @@ async function init() {
     // Auto-load from ?file_id= parameter
     const params = new URLSearchParams(window.location.search);
     const fileId = params.get("file_id");
+    const fingerprint = params.get("fingerprint") || localStorage.getItem("anonymizator_fingerprint") || "";
     if (fileId) {
         try {
-            const resp = await fetch(`/api/files/${encodeURIComponent(fileId)}`);
+            const resp = await fetch(
+                `/api/files/${encodeURIComponent(fileId)}?fingerprint=${encodeURIComponent(fingerprint)}`
+            );
             if (resp.ok) {
                 const blob = await resp.blob();
                 let filename = "fichier.enc";
@@ -65,7 +68,7 @@ async function runDecrypt() {
     successEl.classList.add("hidden");
 
     if (!_encBytes) {
-        errorEl.textContent = "Glissez d'abord un fichier .enc dans la zone ci-dessus.";
+        errorEl.textContent = I18n.t("decrypt.error_no_file");
         errorEl.classList.remove("hidden");
         return;
     }
@@ -73,14 +76,14 @@ async function runDecrypt() {
     const privKeyInput = document.getElementById("private-key-input");
     const privateKeyPem = privKeyInput.value.trim();
     if (!privateKeyPem) {
-        errorEl.textContent = "Collez votre clé privée dans le champ ci-dessous.";
+        errorEl.textContent = I18n.t("decrypt.error_no_key");
         errorEl.classList.remove("hidden");
         return;
     }
 
     const btn = document.getElementById("btn-decrypt");
     btn.disabled = true;
-    btn.textContent = "Déchiffrement…";
+    btn.textContent = I18n.t("decrypt.decrypting");
 
     try {
         const decrypted = await decryptFile(_encBytes, privateKeyPem);
@@ -88,13 +91,13 @@ async function runDecrypt() {
         successEl.classList.remove("hidden");
     } catch (err) {
         errorEl.innerHTML =
-            "<strong>Déchiffrement échoué.</strong><br>" +
+            `<strong>${I18n.t("decrypt.error_failed")}</strong><br>` +
             escapeHtml(err.message) +
-            "<br><span class='text-muted'>Vérifiez que la clé privée correspond au fichier.</span>";
+            `<br><span class='text-muted'>${I18n.t("decrypt.error_format_hint")}</span>`;
         errorEl.classList.remove("hidden");
     } finally {
         btn.disabled = false;
-        btn.textContent = "Déchiffrer";
+        btn.textContent = I18n.t("decrypt.submit");
         // Erase private key from DOM immediately after use
         privKeyInput.value = "";
     }

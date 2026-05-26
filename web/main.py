@@ -11,7 +11,8 @@ from datetime import datetime, timezone
 
 import aiofiles
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -27,11 +28,9 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 BASE_URL = os.getenv("BASE_URL", "http://localhost:8000")
-MAX_FILE_SIZE_MB = int(os.getenv("MAX_FILE_SIZE_MB", "500"))
+MAX_FILE_SIZE_MB = int(os.getenv("MAX_FILE_SIZE_MB", "2"))
+MAX_ACTIVE_TOKENS = 50
 
-# Resolve UPLOAD_DIR to an absolute path.
-# Default: <project_root>/uploads/ — derived from this file's location so the
-# directory lands in the right place regardless of the working directory.
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UPLOAD_DIR = os.path.abspath(
     os.getenv("UPLOAD_DIR", os.path.join(_PROJECT_ROOT, "uploads"))
@@ -67,7 +66,11 @@ app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+if BASE_URL.startswith("https://"):
+    app.add_middleware(HTTPSRedirectMiddleware)
+
 app.mount("/static", StaticFiles(directory=os.path.join(_HERE, "static")), name="static")
+app.mount("/locales", StaticFiles(directory=os.path.join(_HERE, "locales")), name="locales")
 templates = Jinja2Templates(directory=os.path.join(_HERE, "templates"))
 
 
@@ -77,13 +80,9 @@ async def security_headers(request: Request, call_next):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "same-origin"
-    response.headers["Content-Security-Policy"] = (
-        "default-src 'self'; "
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-        "font-src 'self' https://fonts.gstatic.com; "
-        "script-src 'self' https://unpkg.com; "
-        "img-src 'self' data:"
-    )
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    if BASE_URL.startswith("https://"):
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
 
 
@@ -97,7 +96,8 @@ async def researcher_page(request: Request):
 @app.get("/upload/{token_id}", response_class=HTMLResponse)
 async def upload_page(request: Request, token_id: str):
     return templates.TemplateResponse(
-        request=request, name="upload.html", context={"token_id": token_id}
+        request=request, name="upload.html",
+        context={"token_id": token_id, "max_file_size_mb": MAX_FILE_SIZE_MB},
     )
 
 
@@ -112,6 +112,12 @@ async def decrypt_page(request: Request):
 @limiter.limit("20/hour")
 async def create_token(request: Request, body: TokenCreate):
     fingerprint = _public_key_fingerprint(body.public_key)
+    active = await database.count_active_tokens(fingerprint)
+    if active >= MAX_ACTIVE_TOKENS:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many active tokens for this key ({MAX_ACTIVE_TOKENS} max)",
+        )
     token = await database.create_token(
         public_key=body.public_key,
         public_key_fingerprint=fingerprint,
@@ -151,7 +157,9 @@ async def get_token_public_key(token_id: str):
 # ── Upload API ────────────────────────────────────────────────────────────────
 
 @app.post("/api/upload/{token_id}")
+@limiter.limit("10/hour")
 async def upload_file(
+    request: Request,
     token_id: str,
     file: UploadFile = File(...),
     original_filename: str = Form(""),
@@ -166,8 +174,8 @@ async def upload_file(
     if token["used_at"] is not None:
         raise HTTPException(status_code=409, detail="Token déjà utilisé")
 
-    data = await file.read()
     max_bytes = MAX_FILE_SIZE_MB * 1024 * 1024
+    data = await file.read(max_bytes + 1)
     if len(data) > max_bytes:
         raise HTTPException(
             status_code=413, detail=f"Fichier trop volumineux (max {MAX_FILE_SIZE_MB} Mo)"
@@ -206,15 +214,18 @@ async def upload_file(
 # ── Files API ─────────────────────────────────────────────────────────────────
 
 @app.get("/api/files")
-async def list_files(fingerprint: str):
+@limiter.limit("60/hour")
+async def list_files(request: Request, fingerprint: str):
     return await database.get_files_by_fingerprint(fingerprint)
 
 
 @app.get("/api/files/{file_id}")
-async def download_file(file_id: str):
+async def download_file(file_id: str, fingerprint: str = Query(...)):
     record = await database.get_file(file_id)
     if not record:
         raise HTTPException(status_code=404, detail="Fichier introuvable")
+    if record["public_key_fingerprint"] != fingerprint:
+        raise HTTPException(status_code=403, detail="Empreinte incorrecte")
     path = os.path.join(UPLOAD_DIR, record["stored_filename"])
     if not os.path.exists(path):
         raise HTTPException(status_code=404, detail="Fichier introuvable sur le disque")
@@ -223,10 +234,12 @@ async def download_file(file_id: str):
 
 
 @app.delete("/api/files/{file_id}")
-async def delete_file(file_id: str):
+async def delete_file(file_id: str, fingerprint: str = Query(...)):
     record = await database.get_file(file_id)
     if not record:
         raise HTTPException(status_code=404, detail="Fichier introuvable")
+    if record["public_key_fingerprint"] != fingerprint:
+        raise HTTPException(status_code=403, detail="Empreinte incorrecte")
     path = os.path.join(UPLOAD_DIR, record["stored_filename"])
     try:
         os.remove(path)

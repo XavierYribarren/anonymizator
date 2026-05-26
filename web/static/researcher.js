@@ -44,7 +44,7 @@ async function activateKey(publicKeyPem, silent) {
         try {
             fp = await getFingerprint(publicKeyPem);
         } catch {
-            if (!silent) alert("Clé publique invalide.");
+            if (!silent) alert(I18n.t("researcher.key_invalid"));
             localStorage.removeItem(LS_PUB_KEY);
             showNoKey();
             return;
@@ -56,7 +56,7 @@ async function activateKey(publicKeyPem, silent) {
     show("key-loaded");
     document.getElementById("key-fingerprint").textContent = fp;
     document.getElementById("key-status-text").textContent =
-        "Clé RSA-4096 chargée — empreinte : " + fp;
+        I18n.t("researcher.key_loaded") + " — " + fp;
 
     hide("invite-no-key");
     show("invite-form");
@@ -86,7 +86,7 @@ async function loadFiles(fp) {
         tbody.innerHTML = "";
         files.forEach(f => {
             const tr = document.createElement("tr");
-            const name = f.original_filename || "fichier";
+            const name = f.original_filename || I18n.t("researcher.files_no_file");
             tr.innerHTML = `
                 <td class="filename-cell" title="${escapeHtml(name)}">${escapeHtml(name)}</td>
                 <td>${formatDate(f.uploaded_at)}</td>
@@ -94,12 +94,12 @@ async function loadFiles(fp) {
                 <td>${formatDate(f.expires_at)}</td>
                 <td>
                     <div class="btn-group">
-                        <a href="/decrypt?file_id=${encodeURIComponent(f.id)}"
-                           class="btn btn-primary btn-sm">Déchiffrer</a>
-                        <a href="/api/files/${encodeURIComponent(f.id)}"
-                           class="btn btn-secondary btn-sm" download>Télécharger</a>
+                        <a href="/decrypt?file_id=${encodeURIComponent(f.id)}&fingerprint=${encodeURIComponent(fp)}"
+                           class="btn btn-primary btn-sm">${I18n.t("researcher.files_decrypt")}</a>
+                        <a href="/api/files/${encodeURIComponent(f.id)}?fingerprint=${encodeURIComponent(fp)}"
+                           class="btn btn-secondary btn-sm" download>${I18n.t("researcher.files_download")}</a>
                         <button class="btn btn-danger btn-sm"
-                                data-delete="${escapeHtml(f.id)}">Supprimer</button>
+                                data-delete="${escapeHtml(f.id)}">${I18n.t("researcher.files_delete")}</button>
                     </div>
                 </td>`;
             tbody.appendChild(tr);
@@ -108,9 +108,9 @@ async function loadFiles(fp) {
         tbody.addEventListener("click", async (e) => {
             const btn = e.target.closest("[data-delete]");
             if (!btn) return;
-            if (!confirm("Supprimer définitivement ce fichier ?")) return;
+            if (!confirm(I18n.t("researcher.files_confirm_delete"))) return;
             btn.disabled = true;
-            await fetch(`/api/files/${btn.dataset.delete}`, { method: "DELETE" });
+            await fetch(`/api/files/${btn.dataset.delete}?fingerprint=${encodeURIComponent(fp)}`, { method: "DELETE" });
             loadFiles(fp);
         });
 
@@ -118,7 +118,7 @@ async function loadFiles(fp) {
     } catch {
         hide("files-loading");
         const el = document.getElementById("files-empty");
-        el.textContent = "Erreur lors du chargement des fichiers.";
+        el.textContent = I18n.t("researcher.files_error");
         show("files-empty");
     }
 }
@@ -136,7 +136,7 @@ function bindEvents() {
         _generatedPubKey = null;
         hide(result);
         show(progress);
-        progress.textContent = "Génération en cours… (peut prendre quelques secondes)";
+        progress.textContent = I18n.t("researcher.keygen_progress");
         modal.classList.add("active");
 
         try {
@@ -147,7 +147,7 @@ function bindEvents() {
             hide(progress);
             show(result);
         } catch (err) {
-            progress.textContent = "Erreur : " + err.message;
+            progress.textContent = I18n.t("researcher.keygen_error", { message: err.message });
         }
     });
 
@@ -178,7 +178,7 @@ function bindEvents() {
     // Use pasted public key
     document.getElementById("btn-use-pasted-key").addEventListener("click", async () => {
         const pem = document.getElementById("paste-pubkey").value.trim();
-        if (!pem) { alert("Collez une clé publique PEM d'abord."); return; }
+        if (!pem) { alert(I18n.t("researcher.key_paste_prompt")); return; }
         try {
             await crypto.subtle.importKey(
                 "spki", pemToBuffer(pem),
@@ -187,8 +187,8 @@ function bindEvents() {
             localStorage.removeItem(LS_FINGERPRINT);   // force recompute for the new key
             localStorage.setItem(LS_PUB_KEY, pem);
             await activateKey(pem, false);
-        } catch (err) {
-            alert("Clé publique invalide : " + err.message);
+        } catch {
+            alert(I18n.t("researcher.key_invalid"));
         }
     });
 
@@ -207,24 +207,24 @@ function bindEvents() {
         const link = document.getElementById("invite-link").value;
         const ok = await copyToClipboard(link);
         const btn = document.getElementById("btn-copy-link");
-        btn.textContent = ok ? "Copié !" : "Erreur";
-        setTimeout(() => { btn.textContent = "Copier"; }, 2000);
+        btn.textContent = ok ? I18n.t("common.copied") : I18n.t("common.error");
+        setTimeout(() => { btn.textContent = I18n.t("common.copy"); }, 2000);
     });
 }
 
 async function sendInvite() {
     const collectorEmail = document.getElementById("collector-email").value.trim();
-    if (!collectorEmail) { alert("L'email du collecteur est requis."); return; }
+    if (!collectorEmail) { alert(I18n.t("researcher.invite_email_required")); return; }
 
     const publicKey = localStorage.getItem(LS_PUB_KEY);
-    if (!publicKey) { alert("Chargez une clé publique d'abord."); return; }
+    if (!publicKey) { alert(I18n.t("researcher.invite_key_required")); return; }
 
     const researcherEmail = document.getElementById("researcher-email").value.trim();
     if (researcherEmail) localStorage.setItem(LS_EMAIL, researcherEmail);
 
     const btn = document.getElementById("btn-send-invite");
     btn.disabled = true;
-    btn.textContent = "Envoi en cours…";
+    btn.textContent = I18n.t("researcher.invite_sending");
 
     try {
         const resp = await fetch("/api/tokens", {
@@ -237,17 +237,17 @@ async function sendInvite() {
             }),
         });
         const data = await resp.json();
-        if (!resp.ok) throw new Error(data.detail || "Erreur serveur");
+        if (!resp.ok) throw new Error(data.detail || I18n.t("researcher.invite_server_error"));
 
         document.getElementById("invite-success-msg").textContent =
-            `Invitation envoyée à ${collectorEmail}`;
+            I18n.t("researcher.invite_sent", { email: collectorEmail });
         document.getElementById("invite-link").value = data.upload_url;
         show("invite-result");
     } catch (err) {
-        alert("Erreur : " + err.message);
+        alert(I18n.t("researcher.invite_error", { message: err.message }));
     } finally {
         btn.disabled = false;
-        btn.textContent = "Envoyer l'invitation";
+        btn.textContent = I18n.t("researcher.invite_submit");
     }
 }
 

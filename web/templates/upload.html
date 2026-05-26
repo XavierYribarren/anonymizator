@@ -13,7 +13,7 @@
     <div id="app" data-token-id="{{ token_id }}" style="width:100%;max-width:480px">
 
         <div class="card upload-card" id="state-loading">
-            <p class="text-muted" style="text-align:center">Vérification du lien…</p>
+            <p class="text-muted" style="text-align:center" data-i18n="upload.loading">Vérification du lien…</p>
         </div>
 
         <div class="card upload-card hidden" id="state-invalid">
@@ -21,9 +21,8 @@
                 <i data-lucide="alert-triangle" style="width:40px;height:40px;color:#EF4444"></i>
             </div>
             <div class="upload-card-title">Lien invalide</div>
-            <p class="upload-card-subtitle">
-                Ce lien est invalide ou a expiré.<br>
-                Contactez la personne qui vous l'a envoyé pour en obtenir un nouveau.
+            <p class="upload-card-subtitle" data-i18n="upload.error_invalid_token">
+                Ce lien est invalide ou a expiré.
             </p>
         </div>
 
@@ -31,10 +30,9 @@
             <div class="upload-icon-wrap">
                 <i data-lucide="alert-triangle" style="width:40px;height:40px;color:#F59E0B"></i>
             </div>
-            <div class="upload-card-title">Déjà utilisé</div>
-            <p class="upload-card-subtitle">
-                Ce lien a déjà été utilisé.<br>
-                Si ce n'est pas vous, contactez le chercheur — une interception a peut-être eu lieu.
+            <div class="upload-card-title" data-i18n="upload.error_used_title">Déjà utilisé</div>
+            <p class="upload-card-subtitle" data-i18n="upload.error_used_subtitle">
+                Ce lien a déjà été utilisé. Si ce n'est pas vous, contactez le chercheur.
             </p>
         </div>
 
@@ -42,17 +40,17 @@
             <div class="upload-icon-wrap">
                 <i data-lucide="shield-check" style="width:40px;height:40px;color:var(--text-primary)"></i>
             </div>
-            <div class="upload-card-title">Envoi sécurisé</div>
-            <p class="upload-card-subtitle">
+            <div class="upload-card-title" data-i18n="upload.title">Envoi sécurisé</div>
+            <p class="upload-card-subtitle" data-i18n="upload.subtitle">
                 Votre fichier est chiffré dans votre navigateur.
                 Personne d'autre ne peut y accéder, même pas le serveur.
             </p>
-            <p class="upload-card-mention">🔒 RSA-4096 · Aucune donnée en clair</p>
+            <p class="upload-card-mention" data-i18n="upload.trust_badge">🔒 RSA-4096 · Aucune donnée en clair</p>
 
             <div id="drop-zone" class="drop-zone">
                 <i data-lucide="upload-cloud" style="width:32px;height:32px;color:var(--text-muted);display:block;margin:0 auto 8px"></i>
-                Glissez votre fichier ici
-                <span class="drop-zone-hint">ou cliquez pour sélectionner</span>
+                <span data-i18n="upload.drop_label">Glissez votre fichier ici</span>
+                <span class="drop-zone-hint" data-i18n="upload.drop_sublabel">ou cliquez pour sélectionner</span>
             </div>
 
             <div class="progress-wrap hidden" id="progress-wrap" style="margin-top:16px">
@@ -65,8 +63,8 @@
             <div class="upload-icon-wrap">
                 <i data-lucide="check" style="width:40px;height:40px;color:var(--accent)"></i>
             </div>
-            <div class="upload-card-title">Envoyé !</div>
-            <p class="upload-card-subtitle">Merci. Le chercheur a été notifié.</p>
+            <div class="upload-card-title" data-i18n="upload.success_title">Envoyé !</div>
+            <p class="upload-card-subtitle" data-i18n="upload.success_subtitle">Merci. Le chercheur a été notifié.</p>
         </div>
 
     </div>
@@ -74,5 +72,6 @@
 {% endblock %}
 
 {% block scripts %}
+<script>window.MAX_FILE_SIZE_MB = {{ max_file_size_mb }};</script>
 <script src="/static/upload.js"></script>
 {% endblock %}

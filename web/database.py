@@ -177,6 +177,17 @@ async def get_expired_tokens() -> list[dict]:
             return [dict(r) for r in rows]
 
 
+async def count_active_tokens(public_key_fingerprint: str) -> int:
+    now = _iso(_now())
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        async with db.execute(
+            "SELECT COUNT(*) FROM tokens WHERE public_key_fingerprint = ? AND expires_at > ? AND used_at IS NULL",
+            (public_key_fingerprint, now),
+        ) as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row else 0
+
+
 async def delete_tokens(token_ids: list[str]):
     async with aiosqlite.connect(DATABASE_PATH) as db:
         await db.executemany(
