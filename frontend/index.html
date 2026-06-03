@@ -244,6 +244,28 @@
             }).observe(tbody, { childList: true });
         }());
     </script>
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                const resp = await fetch(`${API_BASE}/api/config`);
+                if (!resp.ok) return;
+                const cfg = await resp.json();
+                if (!cfg.is_demo) return;
+                await I18n.init();
+                const emailInput = document.getElementById('researcher-email');
+                if (!emailInput) return;
+                emailInput.disabled = true;
+                emailInput.placeholder = I18n.t('demo.email_disabled_placeholder');
+                const note = document.createElement('p');
+                note.className = 'text-muted';
+                note.style.cssText = 'font-size:12px;margin-top:4px';
+                note.setAttribute('data-i18n', 'demo.email_disabled_note');
+                note.textContent = I18n.t('demo.email_disabled_note');
+                emailInput.parentElement.appendChild(note);
+                I18n.applyTranslations();
+            } catch {}
+        });
+    </script>
     <script>document.addEventListener('DOMContentLoaded', () => lucide.createIcons());</script>
 </body>
 </html>

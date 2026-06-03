@@ -4,7 +4,11 @@
 ![Python](https://img.shields.io/badge/Python-3.10+-black.svg)
 ![Tests](https://img.shields.io/badge/tests-92%20passed-black.svg)
 
+![Anonymizator](docs/anonymizator_img.png)
+
 > Secure file encryption tool for sensitive research data collection, GDPR-compliant.
+
+**[→ Live demo](https://anonymizator.netlify.app)**
 
 ## What it does
 

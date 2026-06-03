@@ -104,5 +104,9 @@
     "error_no_key": "Collez votre clé privée ci-dessous.",
     "error_failed": "Échec du déchiffrement.",
     "error_format_hint": "Vérifiez que la clé privée correspond au fichier."
+  },
+  "demo": {
+    "email_disabled_placeholder": "Non disponible en mode démo",
+    "email_disabled_note": "📧 Les notifications email ne sont pas actives sur cette instance de démonstration."
   }
 }
