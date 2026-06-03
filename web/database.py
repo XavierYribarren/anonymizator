@@ -8,6 +8,7 @@ import aiosqlite
 DATABASE_PATH = os.getenv("DATABASE_PATH", "anonymizator.db")
 TOKEN_EXPIRY_DAYS = int(os.getenv("TOKEN_EXPIRY_DAYS", "7"))
 FILE_EXPIRY_DAYS = int(os.getenv("FILE_EXPIRY_DAYS", "21"))
+SESSION_EXPIRY_DAYS = 30
 
 
 def _now() -> datetime:
@@ -20,6 +21,9 @@ def _iso(dt: datetime) -> str:
 
 async def init_db():
     async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute("PRAGMA journal_mode=WAL")
+        await db.execute("PRAGMA synchronous=NORMAL")
+        await db.execute("PRAGMA foreign_keys=ON")
         await db.execute("""
             CREATE TABLE IF NOT EXISTS tokens (
                 id TEXT PRIMARY KEY,
@@ -34,6 +38,10 @@ async def init_db():
             )
         """)
         await db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_tokens_expires_at
+                ON tokens(expires_at)
+        """)
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS uploaded_files (
                 id TEXT PRIMARY KEY,
                 token_id TEXT NOT NULL,
@@ -46,8 +54,39 @@ async def init_db():
                 public_key_fingerprint TEXT NOT NULL
             )
         """)
+        await db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_uploaded_files_expires_at
+                ON uploaded_files(expires_at)
+        """)
+        await db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_uploaded_files_fingerprint
+                ON uploaded_files(public_key_fingerprint)
+        """)
+        await db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_uploaded_files_token_id
+                ON uploaded_files(token_id)
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS sessions (
+                token TEXT PRIMARY KEY,
+                public_key_fingerprint TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                last_seen_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL
+            )
+        """)
+        await db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_sessions_fingerprint
+                ON sessions(public_key_fingerprint)
+        """)
+        await db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_sessions_expires_at
+                ON sessions(expires_at)
+        """)
         await db.commit()
 
+
+# ── Tokens ────────────────────────────────────────────────────────────────────
 
 async def create_token(
     public_key: str,
@@ -99,6 +138,27 @@ async def mark_token_used(token_id: str, file_id: str):
         )
         await db.commit()
 
+
+async def count_active_tokens(public_key_fingerprint: str) -> int:
+    now = _iso(_now())
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        async with db.execute(
+            "SELECT COUNT(*) FROM tokens WHERE public_key_fingerprint = ? AND expires_at > ? AND used_at IS NULL",
+            (public_key_fingerprint, now),
+        ) as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row else 0
+
+
+async def delete_tokens(token_ids: list[str]):
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.executemany(
+            "DELETE FROM tokens WHERE id = ?", [(t,) for t in token_ids]
+        )
+        await db.commit()
+
+
+# ── Files ─────────────────────────────────────────────────────────────────────
 
 async def create_uploaded_file(
     token_id: str,
@@ -177,20 +237,56 @@ async def get_expired_tokens() -> list[dict]:
             return [dict(r) for r in rows]
 
 
-async def count_active_tokens(public_key_fingerprint: str) -> int:
-    now = _iso(_now())
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        async with db.execute(
-            "SELECT COUNT(*) FROM tokens WHERE public_key_fingerprint = ? AND expires_at > ? AND used_at IS NULL",
-            (public_key_fingerprint, now),
-        ) as cursor:
-            row = await cursor.fetchone()
-            return row[0] if row else 0
+# ── Sessions ──────────────────────────────────────────────────────────────────
 
-
-async def delete_tokens(token_ids: list[str]):
+async def create_session(public_key_fingerprint: str) -> dict:
+    token = str(uuid.uuid4())
+    now = _now()
+    row = {
+        "token": token,
+        "public_key_fingerprint": public_key_fingerprint,
+        "created_at": _iso(now),
+        "last_seen_at": _iso(now),
+        "expires_at": _iso(now + timedelta(days=SESSION_EXPIRY_DAYS)),
+    }
     async with aiosqlite.connect(DATABASE_PATH) as db:
-        await db.executemany(
-            "DELETE FROM tokens WHERE id = ?", [(t,) for t in token_ids]
+        await db.execute(
+            """INSERT INTO sessions
+               (token, public_key_fingerprint, created_at, last_seen_at, expires_at)
+               VALUES (:token, :public_key_fingerprint, :created_at, :last_seen_at, :expires_at)""",
+            row,
         )
         await db.commit()
+    return row
+
+
+async def get_session(token: str) -> dict | None:
+    now = _iso(_now())
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM sessions WHERE token = ? AND expires_at > ?",
+            (token, now),
+        ) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+
+async def update_session_last_seen(token: str):
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute(
+            "UPDATE sessions SET last_seen_at = ? WHERE token = ?",
+            (_iso(_now()), token),
+        )
+        await db.commit()
+
+
+async def cleanup_expired_sessions() -> int:
+    now = _iso(_now())
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        cursor = await db.execute(
+            "DELETE FROM sessions WHERE expires_at <= ?", (now,)
+        )
+        count = cursor.rowcount
+        await db.commit()
+    return count

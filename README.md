@@ -1,10 +1,14 @@
 # Anonymizator
 
+![License: MIT](https://img.shields.io/badge/License-MIT-black.svg)
+![Python](https://img.shields.io/badge/Python-3.10+-black.svg)
+![Tests](https://img.shields.io/badge/tests-92%20passed-black.svg)
+
 > Secure file encryption tool for sensitive research data collection, GDPR-compliant.
 
 ## What it does
 
-Anonymizator lets CNRS researchers securely collect sensitive data files from
+Anonymizator lets research teams securely collect sensitive data files from
 participants or field workers. The researcher generates a key pair, shares a
 one-time upload link with data collectors, and can decrypt any received file —
 without the collector ever seeing the private key or the decrypted content of
@@ -66,6 +70,8 @@ cp .env.example .env
 uvicorn web.main:app --host 0.0.0.0 --port 8000
 ```
 
+See [**Deployment on a VPS**](#deployment-on-a-vps) below for the full automated setup.
+
 ### Desktop-only apps (no server needed)
 
 ```bash
@@ -94,7 +100,7 @@ Key settings:
 | `SMTP_HOST` | — | SMTP server (leave blank to disable email) |
 | `TOKEN_EXPIRY_DAYS` | `7` | Collector link validity |
 | `FILE_EXPIRY_DAYS` | `21` | `.enc` file retention |
-| `MAX_FILE_SIZE_MB` | `500` | Upload size limit |
+| `MAX_FILE_SIZE_MB` | `2` | Upload size limit |
 
 Email is optional — if SMTP is not configured, upload links are shown directly in the UI.
 
@@ -130,7 +136,7 @@ SMTP_PORT=465
 SMTP_USER=resend
 SMTP_PASSWORD=re_xxxxxxxxxxxx   # your Resend API key
 SMTP_STARTTLS=false
-BASE_URL=https://anon.mylab.fr
+BASE_URL=https://your-api-domain.com
 ```
 
 ### Distributing a pre-configured encryptor
@@ -163,6 +169,149 @@ Total overhead before the payload: **524 bytes**.
 >
 > - **v1 → v2:** v1 used AES-256-CFB with a 16-byte IV and RSA-2048. Not compatible.
 > - **v2 old → v2 current:** older v2 builds stored `[nonce][tag][ciphertext]`; current builds store `[nonce][ciphertext+tag]` to match the Web Crypto API native output.
+
+## Tests
+
+### Python unit tests (pytest)
+
+```bash
+# Install test dependencies (in your venv)
+pip install -r requirements_test.txt
+
+# Run all unit tests
+pytest tests/unit/python/ -v
+
+# With coverage report
+pytest tests/unit/python/ --cov=web --cov-report=html
+```
+
+### JavaScript unit tests (Vitest)
+
+Requires **Node.js ≥ 18** (use `nvm use 20` if on an older default).
+
+```bash
+npm install
+npm test
+```
+
+### E2E tests (Playwright)
+
+```bash
+# First install Playwright browsers (once)
+npx playwright install chromium
+
+# Run E2E suite (starts the server automatically)
+npm run test:e2e
+
+# Interactive UI mode
+npm run test:e2e:ui
+```
+
+> E2E tests need Python dependencies installed in the active virtualenv so
+> that `uvicorn web.main:app` can start.
+
+### All tests at once
+
+```bash
+pytest tests/unit/python/ && npm test && npm run test:e2e
+```
+
+## Deploying the frontend (Netlify)
+
+The `frontend/` directory is a self-contained static site deployable on Netlify
+with zero build step.
+
+1. Push the project to GitHub
+2. Go to [netlify.com](https://netlify.com) → **New site from Git**
+3. Select your repository
+4. Build settings:
+   - Base directory: `frontend`
+   - Publish directory: `frontend`
+   - Build command: *(leave empty)*
+5. Deploy
+
+The site is available at `https://your-frontend-domain.com` (or your custom domain).
+
+The `frontend/netlify.toml` file handles security headers, caching, and URL
+routing (`/upload/*` → `upload.html`, `/decrypt` → `decrypt.html`).
+
+**`API_BASE`** in each HTML file auto-detects the environment:
+
+- `localhost` / `127.0.0.1` → `http://localhost:8000` (local dev)
+- Any other host → `https://your-api-domain.com` (production backend)
+
+### Local development (frontend + backend)
+
+```bash
+# Terminal 1 — backend
+python researcher_app.py serve        # starts on http://localhost:8000
+
+# Terminal 2 — frontend
+cd frontend
+python -m http.server 3000            # or: npx serve .
+# Open http://localhost:3000
+```
+
+---
+
+## Deployment on a VPS
+
+### Prerequisites
+
+- Ubuntu 22.04+ or Debian 12+
+- A domain name pointing to your server
+- Root or sudo access
+
+### One-command deployment
+
+```bash
+# Clone the repo on your server
+git clone https://github.com/barrenXY/anonymizator.git
+cd anonymizator
+
+# Deploy (replace your-domain.com with your actual domain)
+sudo bash deploy/deploy.sh your-domain.com
+```
+
+This script automatically:
+
+- Installs Python, Nginx, Certbot
+- Creates a dedicated `anonymizator` system user
+- Sets up a Python virtual environment
+- Configures Nginx with HTTPS (Let's Encrypt)
+- Installs and enables a systemd service
+- Sets up hourly cleanup via cron
+
+### Post-deployment configuration
+
+```bash
+# Edit your configuration
+nano /opt/anonymizator/.env
+
+# Restart after config changes
+systemctl restart anonymizator
+
+# View logs
+journalctl -u anonymizator -f
+```
+
+### Updating
+
+```bash
+sudo bash /opt/anonymizator/deploy/update.sh
+```
+
+### Useful commands
+
+```bash
+systemctl status anonymizator    # Check service status
+systemctl stop anonymizator      # Stop the service
+systemctl start anonymizator     # Start the service
+nginx -t                         # Test Nginx config
+certbot renew --dry-run          # Test SSL renewal
+```
+
+---
 
 ## GDPR compliance notes
 

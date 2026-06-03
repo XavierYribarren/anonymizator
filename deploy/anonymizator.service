@@ -1,0 +1,26 @@
+[Unit]
+Description=Anonymizator — Secure file encryption service
+After=network.target
+
+[Service]
+Type=simple
+User=anonymizator
+Group=anonymizator
+WorkingDirectory=/opt/anonymizator
+Environment="PATH=/opt/anonymizator/venv/bin"
+EnvironmentFile=/opt/anonymizator/.env
+ExecStart=/opt/anonymizator/venv/bin/python researcher_app.py serve --host 0.0.0.0 --port 8001 --no-open
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=anonymizator
+
+# systemd hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/opt/anonymizator/uploads /opt/anonymizator/anonymizator.db
+
+[Install]
+WantedBy=multi-user.target

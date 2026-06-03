@@ -1,4 +1,4 @@
-"""FastAPI application — routes, middleware, lifespan."""
+"""FastAPI application — API routes only. Frontend is served by Netlify."""
 import asyncio
 import base64
 import hashlib
@@ -11,25 +11,32 @@ from datetime import datetime, timezone
 
 import aiofiles
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
-from fastapi.responses import FileResponse, HTMLResponse
-from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
+from fastapi.responses import FileResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from . import cleanup, database, mailer
-from .models import TokenCreate
+from .models import SessionCreate, TokenCreate
 
 load_dotenv()
 
 logger = logging.getLogger(__name__)
 
 BASE_URL = os.getenv("BASE_URL", "http://localhost:8000")
+FRONTEND_URL = os.getenv("FRONTEND_URL", BASE_URL)
 MAX_FILE_SIZE_MB = int(os.getenv("MAX_FILE_SIZE_MB", "2"))
+TOKEN_EXPIRY_DAYS = int(os.getenv("TOKEN_EXPIRY_DAYS", "7"))
+FILE_EXPIRY_DAYS = int(os.getenv("FILE_EXPIRY_DAYS", "21"))
 MAX_ACTIVE_TOKENS = 50
+
+ALLOWED_ORIGINS_RAW = os.getenv("ALLOWED_ORIGINS", "")
+if not ALLOWED_ORIGINS_RAW:
+    raise RuntimeError("ALLOWED_ORIGINS environment variable is required")
+ALLOWED_ORIGINS = ALLOWED_ORIGINS_RAW.split(",")
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UPLOAD_DIR = os.path.abspath(
@@ -40,16 +47,12 @@ limiter = Limiter(key_func=get_remote_address)
 
 
 def _public_key_fingerprint(pem: str) -> str:
-    """SHA-256 of the DER bytes of a PEM public key, hex-encoded, first 16 chars.
-
-    Mirrors getFingerprint() in crypto.js:
-      pemToBuffer strips headers + whitespace → base64-decode → DER bytes
-      crypto.subtle.digest("SHA-256", ...) → hex.slice(0, 16)
-    """
-    der = base64.b64decode(re.sub(r"-----[^-]+-----|[\s]", "", pem))
+    """SHA-256 of the DER bytes of a PEM public key, hex-encoded, first 16 chars."""
+    b64 = re.sub(r"-----[^-]+-----|[\s]", "", pem)
+    if not b64:
+        raise ValueError("Empty PEM payload")
+    der = base64.b64decode(b64, validate=True)
     return hashlib.sha256(der).hexdigest()[:16]
-
-_HERE = os.path.dirname(__file__)
 
 
 @asynccontextmanager
@@ -62,16 +65,9 @@ async def lifespan(app: FastAPI):
     task.cancel()
 
 
-app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None)
+app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, redirect_slashes=False)
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-
-if BASE_URL.startswith("https://"):
-    app.add_middleware(HTTPSRedirectMiddleware)
-
-app.mount("/static", StaticFiles(directory=os.path.join(_HERE, "static")), name="static")
-app.mount("/locales", StaticFiles(directory=os.path.join(_HERE, "locales")), name="locales")
-templates = Jinja2Templates(directory=os.path.join(_HERE, "templates"))
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
 
 
 @app.middleware("http")
@@ -86,24 +82,43 @@ async def security_headers(request: Request, call_next):
     return response
 
 
-# ── HTML pages ────────────────────────────────────────────────────────────────
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_headers=["X-Session-Token", "Content-Type", "Accept"],
+    expose_headers=["Content-Disposition"],
+)
 
-@app.get("/", response_class=HTMLResponse)
-async def researcher_page(request: Request):
-    return templates.TemplateResponse(request=request, name="researcher.html")
-
-
-@app.get("/upload/{token_id}", response_class=HTMLResponse)
-async def upload_page(request: Request, token_id: str):
-    return templates.TemplateResponse(
-        request=request, name="upload.html",
-        context={"token_id": token_id, "max_file_size_mb": MAX_FILE_SIZE_MB},
-    )
+if BASE_URL.startswith("https://"):
+    app.add_middleware(HTTPSRedirectMiddleware)
 
 
-@app.get("/decrypt", response_class=HTMLResponse)
-async def decrypt_page(request: Request):
-    return templates.TemplateResponse(request=request, name="decrypt.html")
+# ── Session dependency ────────────────────────────────────────────────────────
+
+async def _get_session(request: Request) -> dict:
+    token = request.headers.get("X-Session-Token")
+    if not token:
+        raise HTTPException(status_code=401, detail="Session token required")
+    session = await database.get_session(token)
+    if not session:
+        raise HTTPException(status_code=401, detail="Invalid or expired session")
+    await database.update_session_last_seen(token)
+    return session
+
+
+# ── Config API ────────────────────────────────────────────────────────────────
+
+@app.get("/api/config")
+async def get_config():
+    """Public configuration consumed by the static frontend."""
+    return {
+        "max_file_size_mb": MAX_FILE_SIZE_MB,
+        "token_expiry_days": TOKEN_EXPIRY_DAYS,
+        "file_expiry_days": FILE_EXPIRY_DAYS,
+        "app_version": "2.0.0",
+    }
 
 
 # ── Token API ─────────────────────────────────────────────────────────────────
@@ -111,7 +126,10 @@ async def decrypt_page(request: Request):
 @app.post("/api/tokens")
 @limiter.limit("20/hour")
 async def create_token(request: Request, body: TokenCreate):
-    fingerprint = _public_key_fingerprint(body.public_key)
+    try:
+        fingerprint = _public_key_fingerprint(body.public_key)
+    except Exception:
+        raise HTTPException(status_code=422, detail="Invalid public key format")
     active = await database.count_active_tokens(fingerprint)
     if active >= MAX_ACTIVE_TOKENS:
         raise HTTPException(
@@ -124,7 +142,14 @@ async def create_token(request: Request, body: TokenCreate):
         researcher_email=body.researcher_email,
         collector_email=body.collector_email,
     )
-    upload_url = f"{BASE_URL}/upload/{token['id']}"
+    # Dev local uses query string (?token=) because no redirect server is running.
+    # Production Netlify uses path format (/upload/<id>) handled by netlify.toml redirect.
+    _is_local = "localhost" in FRONTEND_URL or "127.0.0.1" in FRONTEND_URL
+    upload_url = (
+        f"{FRONTEND_URL}/upload.html?token={token['id']}"
+        if _is_local
+        else f"{FRONTEND_URL}/upload/{token['id']}"
+    )
     asyncio.create_task(
         mailer.send_collector_invitation(body.collector_email, upload_url, token["expires_at"])
     )
@@ -135,7 +160,6 @@ async def create_token(request: Request, body: TokenCreate):
 async def get_token_status(token_id: str):
     token = await database.get_token(token_id)
     if not token:
-        # Always 200 to avoid enumeration
         return {"valid": False, "used": False, "expired": False}
     now = datetime.now(timezone.utc).isoformat()
     expired = token["expires_at"] < now
@@ -152,6 +176,20 @@ async def get_token_public_key(token_id: str):
     if token["expires_at"] < now:
         raise HTTPException(status_code=404, detail="Token expiré")
     return {"public_key": token["public_key"]}
+
+
+# ── Sessions API ──────────────────────────────────────────────────────────────
+
+@app.post("/api/sessions")
+@limiter.limit("20/hour")
+async def create_session(request: Request, body: SessionCreate):
+    session = await database.create_session(body.public_key_fingerprint)
+    return {"session_token": session["token"]}
+
+
+@app.get("/api/sessions/me")
+async def get_session_status(session: dict = Depends(_get_session)):
+    return {"valid": True, "fingerprint": session["public_key_fingerprint"]}
 
 
 # ── Upload API ────────────────────────────────────────────────────────────────
@@ -198,13 +236,14 @@ async def upload_file(
 
     if token.get("researcher_email"):
         file_record = await database.get_file(file_id)
+        assert file_record is not None  # just inserted above
         asyncio.create_task(
             mailer.send_researcher_notification(
                 to=token["researcher_email"],
                 original_filename=fname,
                 uploaded_at=file_record["uploaded_at"],
                 expires_at=file_record["expires_at"],
-                base_url=BASE_URL,
+                base_url=FRONTEND_URL,
             )
         )
 
@@ -215,17 +254,16 @@ async def upload_file(
 
 @app.get("/api/files")
 @limiter.limit("60/hour")
-async def list_files(request: Request, fingerprint: str):
-    return await database.get_files_by_fingerprint(fingerprint)
+async def list_files(request: Request, session: dict = Depends(_get_session)):
+    return await database.get_files_by_fingerprint(session["public_key_fingerprint"])
 
 
 @app.get("/api/files/{file_id}")
-async def download_file(file_id: str, fingerprint: str = Query(...)):
+@limiter.limit("30/hour")
+async def download_file(request: Request, file_id: str, session: dict = Depends(_get_session)):
     record = await database.get_file(file_id)
-    if not record:
+    if not record or record["public_key_fingerprint"] != session["public_key_fingerprint"]:
         raise HTTPException(status_code=404, detail="Fichier introuvable")
-    if record["public_key_fingerprint"] != fingerprint:
-        raise HTTPException(status_code=403, detail="Empreinte incorrecte")
     path = os.path.join(UPLOAD_DIR, record["stored_filename"])
     if not os.path.exists(path):
         raise HTTPException(status_code=404, detail="Fichier introuvable sur le disque")
@@ -234,12 +272,11 @@ async def download_file(file_id: str, fingerprint: str = Query(...)):
 
 
 @app.delete("/api/files/{file_id}")
-async def delete_file(file_id: str, fingerprint: str = Query(...)):
+@limiter.limit("10/hour")
+async def delete_file(request: Request, file_id: str, session: dict = Depends(_get_session)):
     record = await database.get_file(file_id)
-    if not record:
+    if not record or record["public_key_fingerprint"] != session["public_key_fingerprint"]:
         raise HTTPException(status_code=404, detail="Fichier introuvable")
-    if record["public_key_fingerprint"] != fingerprint:
-        raise HTTPException(status_code=403, detail="Empreinte incorrecte")
     path = os.path.join(UPLOAD_DIR, record["stored_filename"])
     try:
         os.remove(path)

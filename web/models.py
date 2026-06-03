@@ -28,3 +28,7 @@ class FileInfo(BaseModel):
     uploaded_at: str
     file_size: Optional[int] = None
     expires_at: str
+
+
+class SessionCreate(BaseModel):
+    public_key_fingerprint: str

@@ -1,15 +1,79 @@
-{% extends "base.html" %}
-{% block title %}Anonymizator — Espace chercheur{% endblock %}
-{% block nav_home %}active{% endblock %}
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anonymizator — Espace chercheur</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500&family=Stack&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent:              #C8F135;
+            --accent-fg:           #1A1A1A;
+            --bg:                  #EAEEE8;
+            --surface:             #FFFFFF;
+            --surface-secondary:   #F4F4F2;
+            --sidebar-bg:          #111110;
+            --sidebar-icon:        #6B6B6B;
+            --sidebar-icon-active: #FFFFFF;
+            --text-primary:        #111110;
+            --text-secondary:      #6B6B69;
+            --text-muted:          #A8A8A6;
+            --border:              rgba(0,0,0,0.08);
+            --border-strong:       rgba(0,0,0,0.15);
+            --radius-sm:           8px;
+            --radius-md:           12px;
+            --radius-lg:           20px;
+            --radius-xl:           24px;
+            --shadow-card:         0 1px 2px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.04);
+        }
+    </style>
+    <link rel="stylesheet" href="/static/style.css">
+    <script>
+        const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+            ? 'http://localhost:8000'
+            : 'https://anonymizator.barren.fr';
+    </script>
+</head>
+<body class="with-sidebar">
 
-{% block topbar_actions %}
-<a href="#section-invite" class="btn-topbar">
-    <i data-lucide="send" style="width:14px;height:14px"></i>
-    Nouvelle invitation
-</a>
-{% endblock %}
+    <aside class="sidebar" aria-label="Navigation">
+        <div class="sidebar-logo">
+            <a href="/" class="logo-mark" title="Accueil">A</a>
+        </div>
 
-{% block content %}
+        <nav class="sidebar-nav">
+            <!-- TODO: implement section navigation -->
+            <a href="#card-key" class="sidebar-link" title="Clé RSA"
+               style="opacity:0.3;cursor:not-allowed;pointer-events:none">
+                <i data-lucide="key-round" style="width:20px;height:20px"></i>
+            </a>
+            <!-- TODO: implement section navigation -->
+            <a href="#section-invite" class="sidebar-link" title="Invitations"
+               style="opacity:0.3;cursor:not-allowed;pointer-events:none">
+                <i data-lucide="send" style="width:20px;height:20px"></i>
+            </a>
+            <a href="/decrypt" class="sidebar-link" title="Déchiffrement">
+                <i data-lucide="file-lock-2" style="width:20px;height:20px"></i>
+            </a>
+        </nav>
+    </aside>
+
+    <div class="main-wrapper">
+        <div class="topbar">
+            <div class="topbar-left">
+                <span class="topbar-title">Anonymizator</span>
+                <span class="topbar-subtitle">Chiffrement sécurisé</span>
+            </div>
+            <div class="topbar-right">
+                <a href="#section-invite" class="btn-topbar">
+                    <i data-lucide="send" style="width:14px;height:14px"></i>
+                    Nouvelle invitation
+                </a>
+            </div>
+        </div>
+
+        <div class="page-content">
 <div class="researcher-grid">
 
     <!-- ── Card 1 : Clé RSA ───────────────────────────────────────────────── -->
@@ -159,21 +223,27 @@
         </div>
     </div>
 </div>
-{% endblock %}
+        </div>
+    </div>
 
-{% block scripts %}
-<script src="/static/researcher.js"></script>
-<script>
-(function () {
-    const badge = document.getElementById('files-count');
-    const tbody = document.getElementById('files-tbody');
-    if (!badge || !tbody) return;
-    new MutationObserver(function () {
-        var n = tbody.children.length;
-        badge.textContent = n;
-        if (n) badge.classList.remove('hidden');
-        else badge.classList.add('hidden');
-    }).observe(tbody, { childList: true });
-}());
-</script>
-{% endblock %}
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <script src="/static/i18n.js"></script>
+    <script src="/static/crypto.js"></script>
+    <script src="/static/app.js"></script>
+    <script src="/static/researcher.js"></script>
+    <script>
+        (function () {
+            const badge = document.getElementById('files-count');
+            const tbody = document.getElementById('files-tbody');
+            if (!badge || !tbody) return;
+            new MutationObserver(function () {
+                var n = tbody.children.length;
+                badge.textContent = n;
+                if (n) badge.classList.remove('hidden');
+                else badge.classList.add('hidden');
+            }).observe(tbody, { childList: true });
+        }());
+    </script>
+    <script>document.addEventListener('DOMContentLoaded', () => lucide.createIcons());</script>
+</body>
+</html>

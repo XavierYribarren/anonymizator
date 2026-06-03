@@ -9,7 +9,7 @@
     <div class="card">
         <div class="card-label" data-i18n="decrypt.file_label">Fichier chiffré</div>
 
-        <div id="drop-zone" class="drop-zone drop-zone-compact">
+        <div id="drop-zone" class="drop-zone drop-zone-compact" data-testid="enc-drop-zone">
             <i data-lucide="file-lock-2" style="width:28px;height:28px;color:var(--text-muted);display:block;margin:0 auto 6px"></i>
             <span data-i18n="decrypt.file_drop">Glissez le fichier .enc ici</span>
             <span class="drop-zone-hint" data-i18n="decrypt.file_sublabel">ou cliquez pour choisir</span>
@@ -23,7 +23,7 @@
         <div class="card-label" data-i18n="decrypt.key_label">Clé privée</div>
 
         <div class="form-group">
-            <textarea id="private-key-input" class="key-terminal" rows="9"
+            <textarea id="private-key-input" class="key-terminal" rows="9" data-testid="private-key-input"
                 placeholder="-----BEGIN PRIVATE KEY-----&#10;...&#10;-----END PRIVATE KEY-----"
                 data-i18n-placeholder="decrypt.key_placeholder"
                 autocomplete="off" spellcheck="false"></textarea>
@@ -42,9 +42,9 @@
 
     <!-- ── Footer pleine largeur : bouton + alertes ───────────────────────── -->
     <div class="decrypt-footer">
-        <button class="btn-decrypt-main" id="btn-decrypt" data-i18n="decrypt.submit">Déchiffrer le fichier</button>
+        <button class="btn-decrypt-main" id="btn-decrypt" data-testid="decrypt-btn" data-i18n="decrypt.submit">Déchiffrer le fichier</button>
 
-        <div id="decrypt-error" class="alert alert-danger hidden" style="margin-top:12px"></div>
+        <div id="decrypt-error" class="alert alert-danger hidden" style="margin-top:12px" data-testid="decrypt-error"></div>
         <div id="decrypt-success" class="alert alert-success hidden" style="margin-top:12px" data-i18n="decrypt.success">
             Fichier déchiffré et téléchargé. La clé a été effacée de la mémoire.
         </div>
