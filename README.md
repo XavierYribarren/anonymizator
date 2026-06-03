@@ -18,12 +18,43 @@ one-time upload link with data collectors, and can decrypt any received file —
 without the collector ever seeing the private key or the decrypted content of
 other files.
 
-## How it works
+### The problem it solves
 
+When sensitive data needs to travel from a field worker, patient, or participant
+to a researcher, it usually goes through email, WeTransfer, or shared drives —
+all of which expose the file to third parties. Anonymizator eliminates that
+exposure entirely.
+
+### When it's useful
+
+- Collecting medical data from patients
+- Receiving confidential documents from whistleblowers or journalists
+- Gathering research data from field workers in a study
+- Any situation where a non-technical person needs to send a sensitive file
+  to someone, without both parties needing to understand encryption
+
+### Why it's trustworthy
+
+The encryption happens entirely in the collector's browser using the Web Crypto
+API — a battle-tested standard built into every modern browser. The server is
+mathematically incapable of reading the files it stores. Even if the server were
+compromised, the encrypted files would be useless without the researcher's
+private key, which never leaves their machine.
+
+### Open source & self-hostable
+
+Anonymizator is fully open source (MIT license). Anyone can read the code, audit
+it, and deploy their own instance. You are not dependent on a third-party service
+— if you want full control, download the project and run it on your own server in
+minutes. The demo instance at [anonymizator.netlify.app](https://anonymizator.netlify.app)
+is provided for evaluation only.
+
+## How it works
+![How it works](docs/anonymizator_diagram.png)
 ```text
 RESEARCHER (browser — localhost:8000)
   1. Generates RSA-4096 key pair in the browser
-  2. Enters the collector's email → clicks "Envoyer l'invitation"
+  2. Enters the collector's email → clicks "Send invitation"
   3. Collector receives a one-time upload link by email
 
 COLLECTOR (any browser — no install required)
@@ -33,7 +64,7 @@ COLLECTOR (any browser — no install required)
   7. Researcher receives a notification email
 
 RESEARCHER (browser — /decrypt)
-  8. Clicks "Déchiffrer" next to the received file
+  8. Clicks "Decrypt" next to the received file
   9. Pastes private key → decrypted file downloads automatically
 ```
 
