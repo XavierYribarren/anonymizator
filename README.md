@@ -66,6 +66,8 @@ cp .env.example .env
 uvicorn web.main:app --host 0.0.0.0 --port 8000
 ```
 
+See [**Deployment on a VPS**](#deployment-on-a-vps) below for the full automated setup.
+
 ### Desktop-only apps (no server needed)
 
 ```bash
@@ -209,6 +211,103 @@ npm run test:e2e:ui
 ```bash
 pytest tests/unit/python/ && npm test && npm run test:e2e
 ```
+
+## Deploying the frontend (Netlify)
+
+The `frontend/` directory is a self-contained static site deployable on Netlify
+with zero build step.
+
+1. Push the project to GitHub
+2. Go to [netlify.com](https://netlify.com) → **New site from Git**
+3. Select your repository
+4. Build settings:
+   - Base directory: `frontend`
+   - Publish directory: `frontend`
+   - Build command: *(leave empty)*
+5. Deploy
+
+The site is available at `https://anonymizator.netlify.app` (or your custom domain).
+
+The `frontend/netlify.toml` file handles security headers, caching, and URL
+routing (`/upload/*` → `upload.html`, `/decrypt` → `decrypt.html`).
+
+**`API_BASE`** in each HTML file auto-detects the environment:
+
+- `localhost` / `127.0.0.1` → `http://localhost:8000` (local dev)
+- Any other host → `https://anonymizator.barren.fr` (production backend)
+
+### Local development (frontend + backend)
+
+```bash
+# Terminal 1 — backend
+python researcher_app.py serve        # starts on http://localhost:8000
+
+# Terminal 2 — frontend
+cd frontend
+python -m http.server 3000            # or: npx serve .
+# Open http://localhost:3000
+```
+
+---
+
+## Deployment on a VPS
+
+### Prerequisites
+
+- Ubuntu 22.04+ or Debian 12+
+- A domain name pointing to your server
+- Root or sudo access
+
+### One-command deployment
+
+```bash
+# Clone the repo on your server
+git clone https://github.com/VOTRE_USERNAME/anonymizator.git
+cd anonymizator
+
+# Deploy (replace your-domain.com with your actual domain)
+sudo bash deploy/deploy.sh your-domain.com
+```
+
+This script automatically:
+
+- Installs Python, Nginx, Certbot
+- Creates a dedicated `anonymizator` system user
+- Sets up a Python virtual environment
+- Configures Nginx with HTTPS (Let's Encrypt)
+- Installs and enables a systemd service
+- Sets up hourly cleanup via cron
+
+### Post-deployment configuration
+
+```bash
+# Edit your configuration
+nano /opt/anonymizator/.env
+
+# Restart after config changes
+systemctl restart anonymizator
+
+# View logs
+journalctl -u anonymizator -f
+```
+
+### Updating
+
+```bash
+sudo bash /opt/anonymizator/deploy/update.sh
+```
+
+### Useful commands
+
+```bash
+systemctl status anonymizator    # Check service status
+systemctl stop anonymizator      # Stop the service
+systemctl start anonymizator     # Start the service
+nginx -t                         # Test Nginx config
+certbot renew --dry-run          # Test SSL renewal
+```
+
+---
 
 ## GDPR compliance notes
 

@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anonymizator — Envoi sécurisé</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500&family=Stack&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent:              #C8F135;
+            --accent-fg:           #1A1A1A;
+            --bg:                  #EAEEE8;
+            --surface:             #FFFFFF;
+            --surface-secondary:   #F4F4F2;
+            --sidebar-bg:          #111110;
+            --sidebar-icon:        #6B6B6B;
+            --sidebar-icon-active: #FFFFFF;
+            --text-primary:        #111110;
+            --text-secondary:      #6B6B69;
+            --text-muted:          #A8A8A6;
+            --border:              rgba(0,0,0,0.08);
+            --border-strong:       rgba(0,0,0,0.15);
+            --radius-sm:           8px;
+            --radius-md:           12px;
+            --radius-lg:           20px;
+            --radius-xl:           24px;
+            --shadow-card:         0 1px 2px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.04);
+        }
+    </style>
+    <link rel="stylesheet" href="/static/style.css">
+    <script>
+        const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+            ? 'http://localhost:8000'
+            : 'https://anonymizator.barren.fr';
+
+        // MAX_FILE_SIZE_MB — default 2, updated from /api/config at startup
+        window.MAX_FILE_SIZE_MB = 2;
+        (async function () {
+            try {
+                const res = await fetch(`${API_BASE}/api/config`);
+                if (res.ok) {
+                    const cfg = await res.json();
+                    window.MAX_FILE_SIZE_MB = cfg.max_file_size_mb;
+                }
+            } catch {}
+        })();
+
+        function getTokenId() {
+            // 1. Query string : /upload.html?token=xxx (dev local)
+            const params = new URLSearchParams(window.location.search);
+            if (params.get('token')) return params.get('token');
+            // 2. Path segment : /upload/xxx (Netlify)
+            const segments = window.location.pathname.split('/').filter(Boolean);
+            const idx = segments.indexOf('upload');
+            if (idx !== -1 && segments[idx + 1]) return segments[idx + 1];
+            return null;
+        }
+        const TOKEN_ID = getTokenId();
+    </script>
+</head>
+<body class="no-sidebar">
+
+    <aside class="sidebar" aria-label="Navigation">
+        <div class="sidebar-logo">
+            <a href="/" class="logo-mark" title="Accueil">A</a>
+        </div>
+        <nav class="sidebar-nav"></nav>
+    </aside>
+
+    <div class="main-wrapper">
+        <div class="page-content">
+<div class="upload-page">
+
+    <div class="upload-logo">
+        <span class="logo-mark">A</span>
+        <span class="upload-app-name">Anonymizator</span>
+    </div>
+
+    <div id="app" style="width:100%;max-width:480px">
+
+        <div class="card upload-card" id="state-loading">
+            <p class="text-muted" style="text-align:center" data-i18n="upload.loading">Vérification du lien…</p>
+        </div>
+
+        <div class="card upload-card hidden" id="state-invalid" data-testid="error-invalid-token">
+            <div class="upload-icon-wrap">
+                <i data-lucide="alert-triangle" style="width:40px;height:40px;color:#EF4444"></i>
+            </div>
+            <div class="upload-card-title">Lien invalide</div>
+            <p class="upload-card-subtitle" data-i18n="upload.error_invalid_token">
+                Ce lien est invalide ou a expiré.
+            </p>
+        </div>
+
+        <div class="card upload-card hidden" id="state-used" data-testid="error-already-used">
+            <div class="upload-icon-wrap">
+                <i data-lucide="alert-triangle" style="width:40px;height:40px;color:#F59E0B"></i>
+            </div>
+            <div class="upload-card-title" data-i18n="upload.error_used_title">Déjà utilisé</div>
+            <p class="upload-card-subtitle" data-i18n="upload.error_used_subtitle">
+                Ce lien a déjà été utilisé. Si ce n'est pas vous, contactez le chercheur.
+            </p>
+        </div>
+
+        <div class="card upload-card hidden" id="state-upload">
+            <div class="upload-icon-wrap">
+                <i data-lucide="shield-check" style="width:40px;height:40px;color:var(--text-primary)"></i>
+            </div>
+            <div class="upload-card-title" data-testid="upload-title" data-i18n="upload.title">Envoi sécurisé</div>
+            <p class="upload-card-subtitle" data-i18n="upload.subtitle">
+                Votre fichier est chiffré dans votre navigateur.
+                Personne d'autre ne peut y accéder, même pas le serveur.
+            </p>
+            <p class="upload-card-mention" data-i18n="upload.trust_badge">🔒 RSA-4096 · Aucune donnée en clair</p>
+
+            <div id="drop-zone" class="drop-zone" data-testid="upload-drop-zone">
+                <i data-lucide="upload-cloud" style="width:32px;height:32px;color:var(--text-muted);display:block;margin:0 auto 8px"></i>
+                <span data-i18n="upload.drop_label">Glissez votre fichier ici</span>
+                <span class="drop-zone-hint" data-i18n="upload.drop_sublabel">ou cliquez pour sélectionner</span>
+            </div>
+
+            <div class="progress-wrap hidden" id="progress-wrap" style="margin-top:16px">
+                <div class="progress-bar" id="progress-bar"></div>
+            </div>
+            <div id="progress-label" class="progress-label hidden" style="margin-top:6px;text-align:center"></div>
+        </div>
+
+        <div class="card upload-card hidden" id="state-success" data-testid="upload-success">
+            <div class="upload-icon-wrap">
+                <i data-lucide="check" style="width:40px;height:40px;color:var(--accent)"></i>
+            </div>
+            <div class="upload-card-title" data-i18n="upload.success_title">Envoyé !</div>
+            <p class="upload-card-subtitle" data-i18n="upload.success_subtitle">Merci. Le chercheur a été notifié.</p>
+        </div>
+
+    </div>
+</div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <script src="/static/i18n.js"></script>
+    <script src="/static/crypto.js"></script>
+    <script src="/static/app.js"></script>
+    <script src="/static/upload.js"></script>
+    <script>document.addEventListener('DOMContentLoaded', () => lucide.createIcons());</script>
+</body>
+</html>

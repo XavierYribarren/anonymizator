@@ -1,9 +1,11 @@
 /**
  * Upload page — verifies token, encrypts file in-browser, sends to server.
+ * API_BASE and MAX_FILE_SIZE_MB are defined in upload.html before this script.
  */
 
 async function init() {
-    const tokenId = document.getElementById("app").dataset.tokenId;
+    // TOKEN_ID is resolved in upload.html (supports /upload/<uuid> and ?token=<uuid>)
+    const tokenId = TOKEN_ID;
 
     const states = {
         loading: document.getElementById("state-loading"),
@@ -19,7 +21,7 @@ async function init() {
     }
 
     try {
-        const resp = await fetch(`/api/tokens/${encodeURIComponent(tokenId)}`);
+        const resp = await fetch(`${API_BASE}/api/tokens/${encodeURIComponent(tokenId)}`);
         const status = await resp.json();
 
         if (status.expired || !status.valid) { showOnly("invalid"); return; }
@@ -62,7 +64,7 @@ function setupUpload(tokenId) {
             const buffer = await readFileAsBuffer(file);
 
             setStep(I18n.t("upload.step_fetching_key"), 25);
-            const keyResp = await fetch(`/api/tokens/${encodeURIComponent(tokenId)}/public-key`);
+            const keyResp = await fetch(`${API_BASE}/api/tokens/${encodeURIComponent(tokenId)}/public-key`);
             if (!keyResp.ok) throw new Error(I18n.t("upload.error_key"));
             const { public_key } = await keyResp.json();
 
@@ -79,7 +81,7 @@ function setupUpload(tokenId) {
             );
             formData.append("original_filename", file.name);
 
-            const uploadResp = await fetch(`/api/upload/${encodeURIComponent(tokenId)}`, {
+            const uploadResp = await fetch(`${API_BASE}/api/upload/${encodeURIComponent(tokenId)}`, {
                 method: "POST",
                 body: formData,
             });

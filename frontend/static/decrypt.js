@@ -1,6 +1,7 @@
 /**
  * Decrypt page — loads .enc (from drop or ?file_id=), decrypts with private key.
  * The private key never leaves the browser.
+ * API_BASE is defined in decrypt.html before this script is loaded.
  */
 
 let _encBytes = null;
@@ -27,14 +28,14 @@ async function init() {
         }
     });
 
-    // Auto-load from ?file_id= parameter
-    const params = new URLSearchParams(window.location.search);
-    const fileId = params.get("file_id");
-    const fingerprint = params.get("fingerprint") || localStorage.getItem("anonymizator_fingerprint") || "";
-    if (fileId) {
+    // Auto-load from ?file_id= parameter (FILE_ID global defined in decrypt.html)
+    if (FILE_ID) {
+        const fileId = FILE_ID;
         try {
+            const sessionToken = localStorage.getItem("anonymizator_session_token") || "";
             const resp = await fetch(
-                `/api/files/${encodeURIComponent(fileId)}?fingerprint=${encodeURIComponent(fingerprint)}`
+                `${API_BASE}/api/files/${encodeURIComponent(fileId)}`,
+                { headers: { "X-Session-Token": sessionToken } }
             );
             if (resp.ok) {
                 const blob = await resp.blob();

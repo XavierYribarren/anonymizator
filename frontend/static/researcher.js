@@ -1,13 +1,56 @@
 /**
  * Researcher page logic — key management, token generation, file list.
+ * API_BASE is defined in index.html before this script is loaded.
  */
 
 const LS_PUB_KEY = "anonymizator_public_key";
 const LS_FINGERPRINT = "anonymizator_fingerprint";
 const LS_EMAIL = "anonymizator_researcher_email";
+const LS_SESSION = "anonymizator_session_token";
 
 let _generatedPrivKey = null;
 let _generatedPubKey = null;
+
+// ── Session helpers ───────────────────────────────────────────────────────────
+
+function apiFetch(path, options = {}) {
+    // Prepend API_BASE to root-relative paths
+    const url = path.startsWith('/') ? `${API_BASE}${path}` : path;
+    const sessionToken = localStorage.getItem(LS_SESSION);
+    return fetch(url, {
+        ...options,
+        headers: {
+            ...options.headers,
+            "X-Session-Token": sessionToken || "",
+        },
+    });
+}
+
+async function createSession(fingerprint) {
+    try {
+        const resp = await fetch(`${API_BASE}/api/sessions`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ public_key_fingerprint: fingerprint }),
+        });
+        if (!resp.ok) return;
+        const data = await resp.json();
+        localStorage.setItem(LS_SESSION, data.session_token);
+    } catch {
+        // Non-fatal — file list will return 401 and show appropriate error
+    }
+}
+
+async function ensureSession(fingerprint) {
+    const existing = localStorage.getItem(LS_SESSION);
+    if (existing) {
+        const resp = await fetch(`${API_BASE}/api/sessions/me`, {
+            headers: { "X-Session-Token": existing },
+        });
+        if (resp.ok) return; // Still valid
+    }
+    await createSession(fingerprint);
+}
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 
@@ -52,6 +95,8 @@ async function activateKey(publicKeyPem, silent) {
         localStorage.setItem(LS_FINGERPRINT, fp);
     }
 
+    await ensureSession(fp);
+
     hide("key-empty");
     show("key-loaded");
     document.getElementById("key-fingerprint").textContent = fp;
@@ -62,18 +107,27 @@ async function activateKey(publicKeyPem, silent) {
     show("invite-form");
     hide("files-no-key");
 
-    loadFiles(fp);
+    loadFiles();
+}
+
+// ── URL helpers ───────────────────────────────────────────────────────────────
+
+function getDecryptUrl(fileId) {
+    const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+    return isLocal
+        ? `/decrypt.html?file_id=${encodeURIComponent(fileId)}`
+        : `/decrypt?file_id=${encodeURIComponent(fileId)}`;
 }
 
 // ── File list ─────────────────────────────────────────────────────────────────
 
-async function loadFiles(fp) {
+async function loadFiles() {
     hide("files-table-wrap");
     hide("files-empty");
     show("files-loading");
 
     try {
-        const resp = await fetch(`/api/files?fingerprint=${encodeURIComponent(fp)}`);
+        const resp = await apiFetch("/api/files");
         const files = await resp.json();
         hide("files-loading");
 
@@ -94,10 +148,12 @@ async function loadFiles(fp) {
                 <td>${formatDate(f.expires_at)}</td>
                 <td>
                     <div class="btn-group">
-                        <a href="/decrypt?file_id=${encodeURIComponent(f.id)}&fingerprint=${encodeURIComponent(fp)}"
+                        <a href="${getDecryptUrl(f.id)}"
                            class="btn btn-primary btn-sm">${I18n.t("researcher.files_decrypt")}</a>
-                        <a href="/api/files/${encodeURIComponent(f.id)}?fingerprint=${encodeURIComponent(fp)}"
-                           class="btn btn-secondary btn-sm" download>${I18n.t("researcher.files_download")}</a>
+                        <button class="btn btn-secondary btn-sm"
+                                data-download="${escapeHtml(f.id)}"
+                                data-filename="${escapeHtml((f.original_filename || 'fichier') + '.enc')}"
+                                >${I18n.t("researcher.files_download")}</button>
                         <button class="btn btn-danger btn-sm"
                                 data-delete="${escapeHtml(f.id)}">${I18n.t("researcher.files_delete")}</button>
                     </div>
@@ -106,12 +162,28 @@ async function loadFiles(fp) {
         });
 
         tbody.addEventListener("click", async (e) => {
-            const btn = e.target.closest("[data-delete]");
-            if (!btn) return;
+            const dlBtn = e.target.closest("[data-download]");
+            if (dlBtn) {
+                dlBtn.disabled = true;
+                try {
+                    const resp = await apiFetch(`/api/files/${encodeURIComponent(dlBtn.dataset.download)}`);
+                    if (!resp.ok) throw new Error();
+                    const blob = await resp.blob();
+                    downloadBytes(new Uint8Array(await blob.arrayBuffer()), dlBtn.dataset.filename);
+                } catch {
+                    alert(I18n.t("researcher.files_error"));
+                } finally {
+                    dlBtn.disabled = false;
+                }
+                return;
+            }
+
+            const delBtn = e.target.closest("[data-delete]");
+            if (!delBtn) return;
             if (!confirm(I18n.t("researcher.files_confirm_delete"))) return;
-            btn.disabled = true;
-            await fetch(`/api/files/${btn.dataset.delete}?fingerprint=${encodeURIComponent(fp)}`, { method: "DELETE" });
-            loadFiles(fp);
+            delBtn.disabled = true;
+            await apiFetch(`/api/files/${delBtn.dataset.delete}`, { method: "DELETE" });
+            loadFiles();
         });
 
         show("files-table-wrap");
@@ -159,7 +231,8 @@ function bindEvents() {
     // Save public key in localStorage and close modal
     document.getElementById("btn-save-pubkey").addEventListener("click", async () => {
         if (!_generatedPubKey) return;
-        localStorage.removeItem(LS_FINGERPRINT);   // force recompute for the new key
+        localStorage.removeItem(LS_FINGERPRINT);
+        localStorage.removeItem(LS_SESSION);
         localStorage.setItem(LS_PUB_KEY, _generatedPubKey);
         document.getElementById("keygen-modal").classList.remove("active");
         const pub = _generatedPubKey;
@@ -184,7 +257,8 @@ function bindEvents() {
                 "spki", pemToBuffer(pem),
                 { name: "RSA-OAEP", hash: "SHA-256" }, false, ["encrypt"]
             );
-            localStorage.removeItem(LS_FINGERPRINT);   // force recompute for the new key
+            localStorage.removeItem(LS_FINGERPRINT);
+            localStorage.removeItem(LS_SESSION);
             localStorage.setItem(LS_PUB_KEY, pem);
             await activateKey(pem, false);
         } catch {
@@ -196,6 +270,7 @@ function bindEvents() {
     document.getElementById("btn-change-key").addEventListener("click", () => {
         localStorage.removeItem(LS_PUB_KEY);
         localStorage.removeItem(LS_FINGERPRINT);
+        localStorage.removeItem(LS_SESSION);
         showNoKey();
     });
 
@@ -227,7 +302,7 @@ async function sendInvite() {
     btn.textContent = I18n.t("researcher.invite_sending");
 
     try {
-        const resp = await fetch("/api/tokens", {
+        const resp = await fetch(`${API_BASE}/api/tokens`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({

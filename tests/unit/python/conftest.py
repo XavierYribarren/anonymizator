@@ -10,6 +10,8 @@ os.unlink(_db_path)  # let aiosqlite create it fresh
 os.environ["DATABASE_PATH"] = _db_path
 os.environ["UPLOAD_DIR"] = tempfile.mkdtemp()
 os.environ["BASE_URL"] = "http://testserver"
+os.environ["FRONTEND_URL"] = "http://testserver"
+os.environ["ALLOWED_ORIGINS"] = "http://testserver"
 os.environ["MAX_FILE_SIZE_MB"] = "10"
 os.environ["TOKEN_EXPIRY_DAYS"] = "7"
 os.environ["FILE_EXPIRY_DAYS"] = "21"
@@ -34,6 +36,7 @@ async def setup_and_teardown():
     async with aiosqlite.connect(db.DATABASE_PATH) as conn:
         await conn.execute("DELETE FROM uploaded_files")
         await conn.execute("DELETE FROM tokens")
+        await conn.execute("DELETE FROM sessions")
         await conn.commit()
     for f in glob.glob(os.path.join(os.environ["UPLOAD_DIR"], "*.enc")):
         try:
@@ -80,7 +83,7 @@ def sample_key_pair():
 
 @pytest.fixture
 def sample_token(sample_key_pair):
-    """Factory that inserts a fresh token and returns its ID."""
+    """Factory that inserts a fresh token and returns (token_id, fingerprint)."""
     async def _create(
         researcher_email="researcher@test.com",
         collector_email="collector@test.com",
@@ -93,5 +96,16 @@ def sample_token(sample_key_pair):
             collector_email=collector_email,
         )
         return token["id"], fp
+
+    return _create
+
+
+@pytest.fixture
+def sample_session(sample_key_pair):
+    """Factory that creates a session for the sample key pair's fingerprint."""
+    async def _create():
+        fp = _public_key_fingerprint(sample_key_pair["public"])
+        session = await db.create_session(fp)
+        return session["token"], fp
 
     return _create

@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anonymizator — Espace chercheur</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500&family=Stack&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent:              #C8F135;
+            --accent-fg:           #1A1A1A;
+            --bg:                  #EAEEE8;
+            --surface:             #FFFFFF;
+            --surface-secondary:   #F4F4F2;
+            --sidebar-bg:          #111110;
+            --sidebar-icon:        #6B6B6B;
+            --sidebar-icon-active: #FFFFFF;
+            --text-primary:        #111110;
+            --text-secondary:      #6B6B69;
+            --text-muted:          #A8A8A6;
+            --border:              rgba(0,0,0,0.08);
+            --border-strong:       rgba(0,0,0,0.15);
+            --radius-sm:           8px;
+            --radius-md:           12px;
+            --radius-lg:           20px;
+            --radius-xl:           24px;
+            --shadow-card:         0 1px 2px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.04);
+        }
+    </style>
+    <link rel="stylesheet" href="/static/style.css">
+    <script>
+        const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+            ? 'http://localhost:8000'
+            : 'https://anonymizator.barren.fr';
+    </script>
+</head>
+<body class="with-sidebar">
+
+    <aside class="sidebar" aria-label="Navigation">
+        <div class="sidebar-logo">
+            <a href="/" class="logo-mark" title="Accueil">A</a>
+        </div>
+
+        <nav class="sidebar-nav">
+            <!-- TODO: implement section navigation -->
+            <a href="#card-key" class="sidebar-link" title="Clé RSA"
+               style="opacity:0.3;cursor:not-allowed;pointer-events:none">
+                <i data-lucide="key-round" style="width:20px;height:20px"></i>
+            </a>
+            <!-- TODO: implement section navigation -->
+            <a href="#section-invite" class="sidebar-link" title="Invitations"
+               style="opacity:0.3;cursor:not-allowed;pointer-events:none">
+                <i data-lucide="send" style="width:20px;height:20px"></i>
+            </a>
+            <a href="/decrypt" class="sidebar-link" title="Déchiffrement">
+                <i data-lucide="file-lock-2" style="width:20px;height:20px"></i>
+            </a>
+        </nav>
+    </aside>
+
+    <div class="main-wrapper">
+        <div class="topbar">
+            <div class="topbar-left">
+                <span class="topbar-title">Anonymizator</span>
+                <span class="topbar-subtitle">Chiffrement sécurisé</span>
+            </div>
+            <div class="topbar-right">
+                <a href="#section-invite" class="btn-topbar">
+                    <i data-lucide="send" style="width:14px;height:14px"></i>
+                    Nouvelle invitation
+                </a>
+            </div>
+        </div>
+
+        <div class="page-content">
+<div class="researcher-grid">
+
+    <!-- ── Card 1 : Clé RSA ───────────────────────────────────────────────── -->
+    <div class="card" id="card-key">
+        <div class="card-label" data-i18n="researcher.key_section_label">Clé de chiffrement</div>
+
+        <!-- Clé chargée -->
+        <div id="key-loaded" class="hidden" data-testid="key-loaded-indicator">
+            <div class="status-row">
+                <div class="status-dot green dot-pulse"></div>
+                <span class="status-text" id="key-status-text">RSA-4096 chargée</span>
+            </div>
+            <div style="margin-bottom:12px">
+                <span class="fingerprint" id="key-fingerprint" data-testid="key-fingerprint"></span>
+            </div>
+            <button class="btn btn-ghost btn-sm" id="btn-change-key" data-i18n="researcher.key_change">Changer de clé</button>
+        </div>
+
+        <!-- Aucune clé -->
+        <div id="key-empty" data-testid="no-key-section">
+            <div class="no-key-title" data-i18n="researcher.key_none_title">Aucune clé</div>
+            <div class="no-key-subtitle" data-i18n="researcher.key_none_subtitle">Générez ou importez une clé RSA-4096</div>
+
+            <div class="btn-group" style="margin-bottom:16px">
+                <button class="btn btn-primary" id="btn-generate-key" data-testid="generate-key-btn" data-i18n="researcher.key_generate">Générer une paire de clés</button>
+            </div>
+
+            <hr class="separator">
+
+            <div class="form-group">
+                <label for="paste-pubkey" data-i18n="researcher.key_paste_label">Coller une clé publique existante</label>
+                <textarea id="paste-pubkey" class="mono" rows="4"
+                    placeholder="-----BEGIN PUBLIC KEY-----&#10;...&#10;-----END PUBLIC KEY-----"
+                    spellcheck="false" autocomplete="off"></textarea>
+            </div>
+            <button class="btn btn-secondary" id="btn-use-pasted-key" data-i18n="researcher.key_paste_button">Utiliser cette clé</button>
+        </div>
+    </div>
+
+    <!-- ── Card 2 : Invitation ────────────────────────────────────────────── -->
+    <div class="card" id="section-invite">
+        <div class="card-label" data-i18n="researcher.invite_section_label">Invitation</div>
+
+        <div id="invite-no-key" class="alert alert-warning" data-i18n="researcher.invite_no_key">
+            Chargez une clé de chiffrement pour créer des invitations.
+        </div>
+
+        <div id="invite-form" class="hidden">
+            <div class="form-group">
+                <label for="collector-email">
+                    <span data-i18n="researcher.invite_collector_email">Email du collecteur</span>
+                    <span class="required-star">*</span>
+                </label>
+                <input type="email" id="collector-email" data-testid="collector-email"
+                    data-i18n-placeholder="researcher.invite_collector_placeholder"
+                    placeholder="collecteur@exemple.fr" autocomplete="email">
+            </div>
+            <div class="form-group">
+                <label for="researcher-email">
+                    <span data-i18n="researcher.invite_researcher_email">Votre email</span>
+                    <span style="font-weight:400;color:var(--text-muted)" data-i18n="researcher.invite_researcher_hint">(notification)</span>
+                </label>
+                <input type="email" id="researcher-email"
+                    data-i18n-placeholder="researcher.invite_researcher_placeholder"
+                    placeholder="chercheur@cnrs.fr" autocomplete="email">
+            </div>
+            <button class="btn-invite" id="btn-send-invite" data-testid="send-invite-btn" data-i18n="researcher.invite_submit">Envoyer l'invitation</button>
+
+            <div id="invite-result" class="hidden" style="margin-top:14px">
+                <div class="alert alert-success mb-1" id="invite-success-msg" data-testid="invite-success"></div>
+                <div class="link-box mt-1">
+                    <input type="text" id="invite-link" data-testid="invite-link" readonly>
+                    <button class="btn btn-secondary btn-sm" id="btn-copy-link" data-i18n="common.copy">Copier</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Card 3 : Fichiers reçus ───────────────────────────────────────── -->
+    <div class="card card-files">
+        <div class="card-header-row">
+            <div class="card-label" style="margin-bottom:0" data-i18n="researcher.files_section_label">Fichiers reçus</div>
+            <span id="files-count" class="files-count-badge hidden"></span>
+        </div>
+
+        <div id="files-no-key" class="alert alert-warning" data-i18n="researcher.files_no_key">
+            Chargez une clé de chiffrement pour voir vos fichiers.
+        </div>
+        <div id="files-loading" class="text-muted hidden" style="padding:12px 0" data-i18n="researcher.files_loading">Chargement…</div>
+
+        <div id="files-empty" class="files-empty-state hidden">
+            <i data-lucide="inbox" style="width:32px;height:32px;color:var(--text-muted)"></i>
+            <div class="files-empty-text" data-i18n="researcher.files_empty">Aucun fichier reçu</div>
+            <div class="files-empty-sub" data-i18n="researcher.files_empty_subtitle">Les fichiers apparaissent ici dès que le collecteur envoie.</div>
+        </div>
+
+        <div id="files-table-wrap" class="table-wrap hidden">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Fichier</th>
+                        <th>Reçu le</th>
+                        <th>Taille</th>
+                        <th>Expire le</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="files-tbody"></tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+
+<!-- ── Modal génération de clés ───────────────────────────────────────────── -->
+<div class="modal-overlay" id="keygen-modal" data-testid="keygen-modal">
+    <div class="modal">
+        <div class="card-label" style="margin-bottom:16px" data-i18n="researcher.keygen_section_label">Nouvelle paire de clés RSA-4096</div>
+
+        <div id="keygen-progress" class="text-muted" data-i18n="researcher.keygen_progress">
+            Génération en cours — cela peut prendre quelques secondes…
+        </div>
+
+        <div id="keygen-result" class="hidden">
+            <div class="alert alert-warning mb-2" data-testid="key-warning" data-i18n="researcher.key_private_warning">
+                Sauvegardez votre clé privée maintenant. Elle ne sera plus jamais affichée.
+            </div>
+
+            <div class="form-group">
+                <label>Clé publique (peut être partagée librement) :</label>
+                <textarea id="modal-pubkey" class="mono" rows="6" readonly spellcheck="false"></textarea>
+            </div>
+
+            <div class="btn-group mb-1">
+                <button class="btn btn-primary" id="btn-download-privkey" data-testid="private-key-download" data-i18n="researcher.key_private_download">
+                    Télécharger la clé privée (.pem)
+                </button>
+                <button class="btn btn-secondary" id="btn-save-pubkey" data-testid="save-pubkey-btn" data-i18n="researcher.key_save_pubkey">
+                    Mémoriser la clé publique
+                </button>
+            </div>
+
+            <p class="text-muted mt-1">La clé privée sera effacée à la fermeture de cette fenêtre.</p>
+
+            <hr class="separator">
+            <button class="btn btn-ghost" id="btn-close-keygen" data-i18n="researcher.key_close_modal">Fermer</button>
+        </div>
+    </div>
+</div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <script src="/static/i18n.js"></script>
+    <script src="/static/crypto.js"></script>
+    <script src="/static/app.js"></script>
+    <script src="/static/researcher.js"></script>
+    <script>
+        (function () {
+            const badge = document.getElementById('files-count');
+            const tbody = document.getElementById('files-tbody');
+            if (!badge || !tbody) return;
+            new MutationObserver(function () {
+                var n = tbody.children.length;
+                badge.textContent = n;
+                if (n) badge.classList.remove('hidden');
+                else badge.classList.add('hidden');
+            }).observe(tbody, { childList: true });
+        }());
+    </script>
+    <script>document.addEventListener('DOMContentLoaded', () => lucide.createIcons());</script>
+</body>
+</html>

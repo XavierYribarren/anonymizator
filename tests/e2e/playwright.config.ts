@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 import * as path from 'path';
 
-const projectRoot = path.resolve(__dirname, '../..');
+const projectRoot = path.resolve('.');
 
 export default defineConfig({
     testDir: '.',

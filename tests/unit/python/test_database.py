@@ -143,6 +143,49 @@ class TestExpiredFiles:
         assert isinstance(expired, list)
 
 
+class TestSessions:
+    async def test_create_session_returns_dict(self):
+        session = await db.create_session("fp1234567890abcd")
+        assert "token" in session
+        assert len(session["token"]) == 36  # UUID4
+        assert session["public_key_fingerprint"] == "fp1234567890abcd"
+
+    async def test_get_session_returns_valid(self):
+        session = await db.create_session("fp_get_test_1234")
+        fetched = await db.get_session(session["token"])
+        assert fetched is not None
+        assert fetched["token"] == session["token"]
+
+    async def test_get_session_unknown_token_returns_none(self):
+        assert await db.get_session("00000000-0000-0000-0000-000000000000") is None
+
+    async def test_update_session_last_seen(self):
+        session = await db.create_session("fp_lastseen_1234")
+        old_seen = session["last_seen_at"]
+        import asyncio
+        await asyncio.sleep(0.01)
+        await db.update_session_last_seen(session["token"])
+        fetched = await db.get_session(session["token"])
+        assert fetched["last_seen_at"] >= old_seen
+
+    async def test_cleanup_expired_sessions_returns_count(self):
+        import aiosqlite, uuid
+        # Insert an already-expired session directly
+        token = str(uuid.uuid4())
+        async with aiosqlite.connect(db.DATABASE_PATH) as conn:
+            await conn.execute(
+                """INSERT INTO sessions (token, public_key_fingerprint,
+                   created_at, last_seen_at, expires_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (token, "fp_expired_1234", db._iso(db._now()),
+                 db._iso(db._now()), "2000-01-01T00:00:00+00:00"),
+            )
+            await conn.commit()
+        count = await db.cleanup_expired_sessions()
+        assert count >= 1
+        assert await db.get_session(token) is None
+
+
 class TestCountActiveTokens:
     async def test_counts_unused_unexpired_tokens(self):
         fp = "count_test_fp_123"

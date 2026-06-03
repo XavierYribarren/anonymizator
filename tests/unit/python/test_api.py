@@ -61,10 +61,39 @@ class TestTokenAPI:
         assert resp.status_code == 404
 
 
+class TestSessionsAPI:
+    async def test_create_session_returns_token(self, client):
+        resp = await client.post("/api/sessions", json={
+            "public_key_fingerprint": "abcdef1234567890",
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "session_token" in data
+        assert len(data["session_token"]) == 36  # UUID4
+
+    async def test_get_session_me_valid(self, client, sample_session):
+        session_token, fp = await sample_session()
+        resp = await client.get("/api/sessions/me",
+                                headers={"X-Session-Token": session_token})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["valid"] is True
+        assert data["fingerprint"] == fp
+
+    async def test_get_session_me_without_token_returns_401(self, client):
+        resp = await client.get("/api/sessions/me")
+        assert resp.status_code == 401
+
+    async def test_get_session_me_invalid_token_returns_401(self, client):
+        resp = await client.get("/api/sessions/me",
+                                headers={"X-Session-Token": "not-a-real-token"})
+        assert resp.status_code == 401
+
+
 class TestUploadAPI:
     async def test_upload_success(self, client, sample_token):
         token_id, _ = await sample_token()
-        enc = b"\x00" * 540  # 256 (key) + 12 (nonce) + 256+16 (ct+tag) — minimal valid size
+        enc = b"\x00" * 540
         resp = await client.post(
             f"/api/upload/{token_id}",
             files={"file": ("data.csv.enc", enc, "application/octet-stream")},
@@ -116,69 +145,85 @@ class TestUploadAPI:
 
 
 class TestFilesAPI:
-    async def test_list_files_empty_for_unknown_fingerprint(self, client):
-        resp = await client.get("/api/files?fingerprint=nonexistent")
+    async def test_list_files_empty_for_new_session(self, client, sample_session):
+        session_token, _ = await sample_session()
+        resp = await client.get("/api/files",
+                                headers={"X-Session-Token": session_token})
         assert resp.status_code == 200
         assert resp.json() == []
 
-    async def test_list_files_missing_fingerprint_returns_422(self, client):
+    async def test_list_files_without_session_returns_401(self, client):
         resp = await client.get("/api/files")
-        assert resp.status_code == 422
+        assert resp.status_code == 401
 
-    async def test_list_files_after_upload(self, client, sample_token):
-        token_id, fp = await sample_token()
+    async def test_list_files_after_upload(self, client, sample_token, sample_session):
+        token_id, _ = await sample_token()
+        session_token, _ = await sample_session()
         enc = b"\x00" * 540
         await client.post(
             f"/api/upload/{token_id}",
             files={"file": ("test.enc", enc, "application/octet-stream")},
             data={"original_filename": "test.csv"},
         )
-        resp = await client.get(f"/api/files?fingerprint={fp}")
+        resp = await client.get("/api/files",
+                                headers={"X-Session-Token": session_token})
         assert resp.status_code == 200
         files = resp.json()
         assert len(files) == 1
         assert files[0]["original_filename"] == "test.csv"
 
-    async def test_download_file_missing_fingerprint_returns_422(self, client):
+    async def test_download_file_without_session_returns_401(self, client):
         resp = await client.get("/api/files/any-file-id")
-        assert resp.status_code == 422
+        assert resp.status_code == 401
 
-    async def test_download_file_wrong_fingerprint_returns_403(self, client, sample_token):
-        token_id, fp = await sample_token()
+    async def test_download_file_wrong_session_returns_404(self, client, sample_token):
+        from web import database as db
+        token_id, _ = await sample_token()
         enc = b"\x00" * 540
         await client.post(
             f"/api/upload/{token_id}",
             files={"file": ("f.enc", enc, "application/octet-stream")},
         )
-        files = (await client.get(f"/api/files?fingerprint={fp}")).json()
-        file_id = files[0]["id"]
-        resp = await client.get(f"/api/files/{file_id}?fingerprint=wrong_fingerprint")
-        assert resp.status_code == 403
+        # Session for a different fingerprint
+        other_session = await db.create_session("completely_different_fp")
+        resp = await client.get(
+            f"/api/files/any-id",
+            headers={"X-Session-Token": other_session["token"]},
+        )
+        assert resp.status_code == 404
 
-    async def test_delete_file_wrong_fingerprint_returns_403(self, client, sample_token):
-        token_id, fp = await sample_token()
+    async def test_delete_file_wrong_session_returns_404(self, client, sample_token):
+        from web import database as db
+        token_id, _ = await sample_token()
         enc = b"\x00" * 540
         await client.post(
             f"/api/upload/{token_id}",
             files={"file": ("f.enc", enc, "application/octet-stream")},
         )
-        files = (await client.get(f"/api/files?fingerprint={fp}")).json()
-        file_id = files[0]["id"]
-        resp = await client.delete(f"/api/files/{file_id}?fingerprint=wrong")
-        assert resp.status_code == 403
+        other_session = await db.create_session("other_fp")
+        resp = await client.delete(
+            "/api/files/any-id",
+            headers={"X-Session-Token": other_session["token"]},
+        )
+        assert resp.status_code == 404
 
-    async def test_delete_file_correct_fingerprint(self, client, sample_token):
-        token_id, fp = await sample_token()
+    async def test_delete_file_correct_session(self, client, sample_token, sample_session):
+        token_id, _ = await sample_token()
+        session_token, _ = await sample_session()
         enc = b"\x00" * 540
         await client.post(
             f"/api/upload/{token_id}",
             files={"file": ("f.enc", enc, "application/octet-stream")},
         )
-        files = (await client.get(f"/api/files?fingerprint={fp}")).json()
+        files = (await client.get("/api/files",
+                                  headers={"X-Session-Token": session_token})).json()
         file_id = files[0]["id"]
-        resp = await client.delete(f"/api/files/{file_id}?fingerprint={fp}")
+        resp = await client.delete(f"/api/files/{file_id}",
+                                   headers={"X-Session-Token": session_token})
         assert resp.status_code == 200
-        assert (await client.get(f"/api/files?fingerprint={fp}")).json() == []
+        remaining = (await client.get("/api/files",
+                                      headers={"X-Session-Token": session_token})).json()
+        assert remaining == []
 
 
 class TestSecurityHeaders:
@@ -205,7 +250,6 @@ class TestActiveTokensCap:
         from web.main import MAX_ACTIVE_TOKENS, _public_key_fingerprint
 
         fp = _public_key_fingerprint(sample_key_pair["public"])
-        # Insert MAX_ACTIVE_TOKENS tokens directly in DB
         for _ in range(MAX_ACTIVE_TOKENS):
             await db.create_token(
                 public_key=sample_key_pair["public"],
