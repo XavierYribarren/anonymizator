@@ -104,5 +104,9 @@
     "error_no_key": "Paste your private key below.",
     "error_failed": "Decryption failed.",
     "error_format_hint": "Check that the private key matches the file."
+  },
+  "demo": {
+    "email_disabled_placeholder": "Not available in demo mode",
+    "email_disabled_note": "📧 Email notifications are not active on this demo instance."
   }
 }

@@ -118,6 +118,7 @@ async def get_config():
         "token_expiry_days": TOKEN_EXPIRY_DAYS,
         "file_expiry_days": FILE_EXPIRY_DAYS,
         "app_version": "2.0.0",
+        "is_demo": not bool(os.getenv("SMTP_HOST", "").strip()),
     }
 
 
