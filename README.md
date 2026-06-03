@@ -1,10 +1,14 @@
 # Anonymizator
 
+![License: MIT](https://img.shields.io/badge/License-MIT-black.svg)
+![Python](https://img.shields.io/badge/Python-3.10+-black.svg)
+![Tests](https://img.shields.io/badge/tests-92%20passed-black.svg)
+
 > Secure file encryption tool for sensitive research data collection, GDPR-compliant.
 
 ## What it does
 
-Anonymizator lets CNRS researchers securely collect sensitive data files from
+Anonymizator lets research teams securely collect sensitive data files from
 participants or field workers. The researcher generates a key pair, shares a
 one-time upload link with data collectors, and can decrypt any received file —
 without the collector ever seeing the private key or the decrypted content of
@@ -96,7 +100,7 @@ Key settings:
 | `SMTP_HOST` | — | SMTP server (leave blank to disable email) |
 | `TOKEN_EXPIRY_DAYS` | `7` | Collector link validity |
 | `FILE_EXPIRY_DAYS` | `21` | `.enc` file retention |
-| `MAX_FILE_SIZE_MB` | `500` | Upload size limit |
+| `MAX_FILE_SIZE_MB` | `2` | Upload size limit |
 
 Email is optional — if SMTP is not configured, upload links are shown directly in the UI.
 
@@ -132,7 +136,7 @@ SMTP_PORT=465
 SMTP_USER=resend
 SMTP_PASSWORD=re_xxxxxxxxxxxx   # your Resend API key
 SMTP_STARTTLS=false
-BASE_URL=https://anon.mylab.fr
+BASE_URL=https://your-api-domain.com
 ```
 
 ### Distributing a pre-configured encryptor
@@ -226,7 +230,7 @@ with zero build step.
    - Build command: *(leave empty)*
 5. Deploy
 
-The site is available at `https://anonymizator.netlify.app` (or your custom domain).
+The site is available at `https://your-frontend-domain.com` (or your custom domain).
 
 The `frontend/netlify.toml` file handles security headers, caching, and URL
 routing (`/upload/*` → `upload.html`, `/decrypt` → `decrypt.html`).
@@ -234,7 +238,7 @@ routing (`/upload/*` → `upload.html`, `/decrypt` → `decrypt.html`).
 **`API_BASE`** in each HTML file auto-detects the environment:
 
 - `localhost` / `127.0.0.1` → `http://localhost:8000` (local dev)
-- Any other host → `https://anonymizator.barren.fr` (production backend)
+- Any other host → `https://your-api-domain.com` (production backend)
 
 ### Local development (frontend + backend)
 
@@ -262,7 +266,7 @@ python -m http.server 3000            # or: npx serve .
 
 ```bash
 # Clone the repo on your server
-git clone https://github.com/VOTRE_USERNAME/anonymizator.git
+git clone https://github.com/barrenXY/anonymizator.git
 cd anonymizator
 
 # Deploy (replace your-domain.com with your actual domain)
