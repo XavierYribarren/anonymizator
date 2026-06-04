@@ -1,10 +1,18 @@
 /**
  * Upload page — verifies token, encrypts file in-browser, sends to server.
- * API_BASE and MAX_FILE_SIZE_MB are defined in upload.html before this script.
+ * API_BASE is defined in api-base.js before this script.
  */
 
+const TOKEN_ID = new URLSearchParams(window.location.search).get('token');
+
+let _maxFileSizeMB = 2;
+
 async function init() {
-    // TOKEN_ID is resolved in upload.html (supports /upload/<uuid> and ?token=<uuid>)
+    fetch(`${API_BASE}/api/config`)
+        .then(r => r.ok ? r.json() : null)
+        .then(cfg => { if (cfg?.max_file_size_mb) _maxFileSizeMB = cfg.max_file_size_mb; })
+        .catch(() => {});
+
     const tokenId = TOKEN_ID;
 
     const states = {
@@ -46,7 +54,7 @@ function setupUpload(tokenId) {
     }
 
     setupDropZone(dropZone, async (file) => {
-        const maxMB = window.MAX_FILE_SIZE_MB || 2;
+        const maxMB = _maxFileSizeMB;
         if (file.size > maxMB * 1024 * 1024) {
             dropZone.classList.add("error");
             dropZone.innerHTML =

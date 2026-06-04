@@ -1,8 +1,10 @@
 /**
  * Decrypt page — loads .enc (from drop or ?file_id=), decrypts with private key.
  * The private key never leaves the browser.
- * API_BASE is defined in decrypt.html before this script is loaded.
+ * API_BASE is defined in api-base.js before this script.
  */
+
+const FILE_ID = new URLSearchParams(window.location.search).get('file_id');
 
 let _encBytes = null;
 let _outputName = null;
@@ -28,7 +30,6 @@ async function init() {
         }
     });
 
-    // Auto-load from ?file_id= parameter (FILE_ID global defined in decrypt.html)
     if (FILE_ID) {
         const fileId = FILE_ID;
         try {

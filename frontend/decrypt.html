@@ -31,12 +31,7 @@
     <!-- <meta name="api-base" content="http://localhost:8000"> -->
     <meta name="api-base" content="https://anonymizator.barren.fr">
     <link rel="stylesheet" href="/static/style.css">
-    <script>
-        const API_BASE = document.querySelector('meta[name="api-base"]')?.content
-            || window.location.origin;
-
-        const FILE_ID = new URLSearchParams(window.location.search).get('file_id');
-    </script>
+    <script src="/static/api-base.js"></script>
 </head>
 <body class="with-sidebar">
 

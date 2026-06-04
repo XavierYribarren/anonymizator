@@ -87,7 +87,20 @@ async def security_headers(request: Request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "same-origin"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
-    response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self' https://unpkg.com "
+        # MutationObserver badge counter (index.html)
+        "'sha256-nSokawc4Q1QWarjsYu4KOc3H5g947dqGV9gylr7GVjk=' "
+        # Demo-mode email disable (index.html)
+        "'sha256-/XtLSdxaZKZPBeWJhZHrHTVONgxNV1fOILJDPSYRZS0=' "
+        # lucide.createIcons() one-liner (all pages)
+        "'sha256-jV3i0JBa9cS+lTgh4trADnOc1tGK8qfItJBtHCZwHyQ='; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; "
+        "connect-src 'self' https://anonymizator.barren.fr; "
+        "frame-ancestors 'none'"
+    )
     if BASE_URL.startswith("https://"):
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response

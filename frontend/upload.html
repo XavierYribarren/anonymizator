@@ -31,34 +31,7 @@
     <!-- <meta name="api-base" content="http://localhost:8000"> -->
     <meta name="api-base" content="https://anonymizator.barren.fr">
     <link rel="stylesheet" href="/static/style.css">
-    <script>
-        const API_BASE = document.querySelector('meta[name="api-base"]')?.content
-            || window.location.origin;
-
-        // MAX_FILE_SIZE_MB — default 2, updated from /api/config at startup
-        window.MAX_FILE_SIZE_MB = 2;
-        (async function () {
-            try {
-                const res = await fetch(`${API_BASE}/api/config`);
-                if (res.ok) {
-                    const cfg = await res.json();
-                    window.MAX_FILE_SIZE_MB = cfg.max_file_size_mb;
-                }
-            } catch {}
-        })();
-
-        function getTokenId() {
-            // 1. Query string : /upload.html?token=xxx (dev local)
-            const params = new URLSearchParams(window.location.search);
-            if (params.get('token')) return params.get('token');
-            // 2. Path segment : /upload/xxx (Netlify)
-            const segments = window.location.pathname.split('/').filter(Boolean);
-            const idx = segments.indexOf('upload');
-            if (idx !== -1 && segments[idx + 1]) return segments[idx + 1];
-            return null;
-        }
-        const TOKEN_ID = getTokenId();
-    </script>
+    <script src="/static/api-base.js"></script>
 </head>
 <body class="no-sidebar">
 
