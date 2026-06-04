@@ -84,6 +84,8 @@ class EncryptorApp(QMainWindow):
     def _get_public_key(self):
         if EMBEDDED_PUBLIC_KEY:
             return crypto_utils.load_public_key(EMBEDDED_PUBLIC_KEY)
+        if self.key_input is None:
+            return None
         pem = self.key_input.toPlainText().strip()
         if not pem:
             QMessageBox.warning(
@@ -91,7 +93,16 @@ class EncryptorApp(QMainWindow):
                 "Veuillez coller la clé publique avant de chiffrer.",
             )
             return None
-        return crypto_utils.load_public_key(pem)
+        key = crypto_utils.load_public_key(pem)
+        if getattr(key, "key_size", 0) < 4096:
+            QMessageBox.warning(
+                self, "Clé faible",
+                f"La clé RSA fait {getattr(key, 'key_size', '?')} bits.\n"
+                "Une clé d'au moins 4096 bits est recommandée.\n\n"
+                "Le chiffrement est annulé.",
+            )
+            return None
+        return key
 
     def encrypt_file(self, file_path: str):
         try:

@@ -6,50 +6,24 @@
 const LS_PUB_KEY = "anonymizator_public_key";
 const LS_FINGERPRINT = "anonymizator_fingerprint";
 const LS_EMAIL = "anonymizator_researcher_email";
-const LS_SESSION = "anonymizator_session_token";
+const LS_RESEARCHER_TOKEN = "anonymizator_researcher_token";
 
 let _generatedPrivKey = null;
 let _generatedPubKey = null;
 
-// ── Session helpers ───────────────────────────────────────────────────────────
+// ── API helpers ───────────────────────────────────────────────────────────────
 
 function apiFetch(path, options = {}) {
     // Prepend API_BASE to root-relative paths
     const url = path.startsWith('/') ? `${API_BASE}${path}` : path;
-    const sessionToken = localStorage.getItem(LS_SESSION);
+    const researcherToken = localStorage.getItem(LS_RESEARCHER_TOKEN) || "";
     return fetch(url, {
         ...options,
         headers: {
             ...options.headers,
-            "X-Session-Token": sessionToken || "",
+            "X-Researcher-Token": researcherToken,
         },
     });
-}
-
-async function createSession(fingerprint) {
-    try {
-        const resp = await fetch(`${API_BASE}/api/sessions`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ public_key_fingerprint: fingerprint }),
-        });
-        if (!resp.ok) return;
-        const data = await resp.json();
-        localStorage.setItem(LS_SESSION, data.session_token);
-    } catch {
-        // Non-fatal — file list will return 401 and show appropriate error
-    }
-}
-
-async function ensureSession(fingerprint) {
-    const existing = localStorage.getItem(LS_SESSION);
-    if (existing) {
-        const resp = await fetch(`${API_BASE}/api/sessions/me`, {
-            headers: { "X-Session-Token": existing },
-        });
-        if (resp.ok) return; // Still valid
-    }
-    await createSession(fingerprint);
 }
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
@@ -81,9 +55,8 @@ function showNoKey() {
 }
 
 async function activateKey(publicKeyPem, silent) {
-    // Read from localStorage first; compute and persist only if missing.
     let fp = localStorage.getItem(LS_FINGERPRINT);
-    if (!fp) {
+    if (!fp || fp.length !== 64) {
         try {
             fp = await getFingerprint(publicKeyPem);
         } catch {
@@ -94,8 +67,6 @@ async function activateKey(publicKeyPem, silent) {
         }
         localStorage.setItem(LS_FINGERPRINT, fp);
     }
-
-    await ensureSession(fp);
 
     hide("key-empty");
     show("key-loaded");
@@ -113,10 +84,7 @@ async function activateKey(publicKeyPem, silent) {
 // ── URL helpers ───────────────────────────────────────────────────────────────
 
 function getDecryptUrl(fileId) {
-    const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
-    return isLocal
-        ? `/decrypt.html?file_id=${encodeURIComponent(fileId)}`
-        : `/decrypt?file_id=${encodeURIComponent(fileId)}`;
+    return `/decrypt.html?file_id=${encodeURIComponent(fileId)}`;
 }
 
 // ── File list ─────────────────────────────────────────────────────────────────
@@ -232,7 +200,6 @@ function bindEvents() {
     document.getElementById("btn-save-pubkey").addEventListener("click", async () => {
         if (!_generatedPubKey) return;
         localStorage.removeItem(LS_FINGERPRINT);
-        localStorage.removeItem(LS_SESSION);
         localStorage.setItem(LS_PUB_KEY, _generatedPubKey);
         document.getElementById("keygen-modal").classList.remove("active");
         const pub = _generatedPubKey;
@@ -258,7 +225,7 @@ function bindEvents() {
                 { name: "RSA-OAEP", hash: "SHA-256" }, false, ["encrypt"]
             );
             localStorage.removeItem(LS_FINGERPRINT);
-            localStorage.removeItem(LS_SESSION);
+            localStorage.removeItem(LS_RESEARCHER_TOKEN);
             localStorage.setItem(LS_PUB_KEY, pem);
             await activateKey(pem, false);
         } catch {
@@ -270,7 +237,7 @@ function bindEvents() {
     document.getElementById("btn-change-key").addEventListener("click", () => {
         localStorage.removeItem(LS_PUB_KEY);
         localStorage.removeItem(LS_FINGERPRINT);
-        localStorage.removeItem(LS_SESSION);
+        localStorage.removeItem(LS_RESEARCHER_TOKEN);
         showNoKey();
     });
 
@@ -288,13 +255,18 @@ function bindEvents() {
 }
 
 async function sendInvite() {
-    const collectorEmail = document.getElementById("collector-email").value.trim();
-    if (!collectorEmail) { alert(I18n.t("researcher.invite_email_required")); return; }
+    const collectorEl = document.getElementById("collector-email");
+    const collectorEmail = collectorEl.disabled ? null : collectorEl.value.trim();
+    if (!collectorEl.disabled && !collectorEmail) {
+        alert(I18n.t("researcher.invite_email_required"));
+        return;
+    }
 
     const publicKey = localStorage.getItem(LS_PUB_KEY);
     if (!publicKey) { alert(I18n.t("researcher.invite_key_required")); return; }
 
-    const researcherEmail = document.getElementById("researcher-email").value.trim();
+    const researcherEl = document.getElementById("researcher-email");
+    const researcherEmail = researcherEl.disabled ? null : researcherEl.value.trim();
     if (researcherEmail) localStorage.setItem(LS_EMAIL, researcherEmail);
 
     const btn = document.getElementById("btn-send-invite");
@@ -313,6 +285,10 @@ async function sendInvite() {
         });
         const data = await resp.json();
         if (!resp.ok) throw new Error(data.detail || I18n.t("researcher.invite_server_error"));
+
+        if (data.researcher_token) {
+            localStorage.setItem(LS_RESEARCHER_TOKEN, data.researcher_token);
+        }
 
         document.getElementById("invite-success-msg").textContent =
             I18n.t("researcher.invite_sent", { email: collectorEmail });

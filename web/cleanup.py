@@ -1,4 +1,4 @@
-"""Background task that removes expired files, tokens, and sessions."""
+"""Background task that removes expired files, tokens, and orphaned public keys."""
 import asyncio
 import logging
 import os
@@ -14,7 +14,7 @@ UPLOAD_DIR = os.path.abspath(
 
 
 async def cleanup_expired():
-    """Delete expired files (disk + DB), expired unused tokens, and expired sessions."""
+    """Delete expired files (disk + DB), expired unused tokens, and orphaned public keys."""
     # Files — physical deletion must happen before DB record is removed
     expired_files = await database.get_expired_files()
     deleted_files = 0
@@ -35,13 +35,13 @@ async def cleanup_expired():
     if expired_tokens:
         await database.delete_tokens([t["id"] for t in expired_tokens])
 
-    # Sessions
-    deleted_sessions = await database.cleanup_expired_sessions()
+    # Public keys no longer referenced by any active token or file
+    deleted_keys = await database.cleanup_orphaned_public_keys()
 
-    if deleted_files or deleted_tokens or deleted_sessions:
+    if deleted_files or deleted_tokens or deleted_keys:
         logger.info(
-            "Cleanup: %d files, %d tokens, %d sessions deleted",
-            deleted_files, deleted_tokens, deleted_sessions,
+            "Cleanup: %d files, %d tokens, %d public_keys deleted",
+            deleted_files, deleted_tokens, deleted_keys,
         )
 
 

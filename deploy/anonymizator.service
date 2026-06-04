@@ -9,9 +9,10 @@ Group=anonymizator
 WorkingDirectory=/opt/anonymizator
 Environment="PATH=/opt/anonymizator/venv/bin"
 EnvironmentFile=/opt/anonymizator/.env
-ExecStart=/opt/anonymizator/venv/bin/python researcher_app.py serve --host 0.0.0.0 --port 8001 --no-open
+ExecStart=/opt/anonymizator/venv/bin/python researcher_app.py serve --host 127.0.0.1 --port 8001 --no-open
 Restart=on-failure
-RestartSec=5
+UMask=0077
+RestartSec=30
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=anonymizator
@@ -20,7 +21,7 @@ SyslogIdentifier=anonymizator
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
-ReadWritePaths=/opt/anonymizator/uploads /opt/anonymizator/anonymizator.db
+ReadWritePaths=/opt/anonymizator/uploads /opt/anonymizator/data
 
 [Install]
 WantedBy=multi-user.target

@@ -2,7 +2,7 @@
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-black.svg)
 ![Python](https://img.shields.io/badge/Python-3.10+-black.svg)
-![Tests](https://img.shields.io/badge/tests-92%20passed-black.svg)
+![Tests](https://img.shields.io/badge/tests-83%20passed-black.svg)
 
 ![Anonymizator](docs/anonymizator_img.png)
 
@@ -63,19 +63,22 @@ COLLECTOR (any browser — no install required)
   6. File is encrypted in the browser before upload — the server never sees plaintext
   7. Researcher receives a notification email
 
-RESEARCHER (browser — /decrypt)
+RESEARCHER (browser — /decrypt.html)
   8. Clicks "Decrypt" next to the received file
   9. Pastes private key → decrypted file downloads automatically
 ```
 
 ## Security
 
-- **RSA-4096 + AES-256-GCM** hybrid encryption
+- **RSA-4096 + AES-256-GCM** hybrid encryption — RSA key size ≥ 4096 bits is enforced server-side on every `POST /api/tokens` call
 - **Client-side only** — encryption/decryption happen entirely in the browser via the Web Crypto API; the server only stores the already-encrypted `.enc` file
 - **Private key never leaves the researcher's machine**
 - **Authenticated encryption** (GCM) prevents silent data tampering
+- **Opaque researcher token** — the dashboard authenticates via a UUID4 `researcher_token` sent as the `X-Researcher-Token` HTTP header; no sessions, no cookies, no challenge-response
 - One-time upload links — each link can only be used once
 - Files are deleted automatically after 21 days (configurable)
+- **PKCS#8 format required** for browser-side decryption (`-----BEGIN PRIVATE KEY-----`); keys in PKCS#1 or OpenSSH format must be converted first: `openssl pkcs8 -topk8 -nocrypt -in old.pem -out new.pem`
+- Third-party scripts (lucide) pinned to a fixed version with Subresource Integrity (SRI) hash
 
 ## Installation
 
@@ -93,7 +96,7 @@ Requirements: Python 3.10+.
 ### Web interface (recommended)
 
 ```bash
-python researcher_app.py
+python researcher_app.py serve
 # Opens http://localhost:8000 automatically
 ```
 
@@ -129,15 +132,18 @@ cp .env.example .env
 
 Key settings:
 
-| Variable | Default | Description |
-|---|---|---|
-| `BASE_URL` | `http://localhost:8000` | Public URL for links in emails |
-| `SMTP_HOST` | — | SMTP server (leave blank to disable email) |
-| `TOKEN_EXPIRY_DAYS` | `7` | Collector link validity |
-| `FILE_EXPIRY_DAYS` | `21` | `.enc` file retention |
-| `MAX_FILE_SIZE_MB` | `2` | Upload size limit |
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `ALLOWED_ORIGINS` | **yes** | — | Comma-separated list of allowed CORS origins (e.g. `https://your-frontend.com`) |
+| `BASE_URL` | **yes** | `http://localhost:8000` | Public API URL — used for HTTPS detection and HSTS |
+| `FRONTEND_URL` | no | value of `BASE_URL` | Frontend origin — used to build upload/decrypt links in emails |
+| `DATABASE_PATH` | no | `anonymizator.db` | Path to the SQLite file (production: `/opt/anonymizator/data/anonymizator.db`) |
+| `SMTP_HOST` | no | — | SMTP server (leave blank to disable email) |
+| `TOKEN_EXPIRY_DAYS` | no | `7` | Collector link validity |
+| `FILE_EXPIRY_DAYS` | no | `21` | `.enc` file retention |
+| `MAX_FILE_SIZE_MB` | no | `2` | Upload size limit |
 
-Email is optional — if SMTP is not configured, upload links are shown directly in the UI.
+Email is optional — if `SMTP_HOST` is not set, upload links are shown directly in the UI and email fields are automatically disabled in demo mode.
 
 ### Email configuration
 
@@ -159,6 +165,7 @@ SMTP_USER=
 SMTP_PASSWORD=
 SMTP_STARTTLS=false
 BASE_URL=http://localhost:8000
+ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
 ```
 
 Emails are visible at **[http://localhost:8025](http://localhost:8025)**.
@@ -172,6 +179,7 @@ SMTP_USER=resend
 SMTP_PASSWORD=re_xxxxxxxxxxxx   # your Resend API key
 SMTP_STARTTLS=false
 BASE_URL=https://your-api-domain.com
+ALLOWED_ORIGINS=https://your-frontend-domain.com
 ```
 
 ### Distributing a pre-configured encryptor
@@ -270,10 +278,18 @@ The site is available at `https://your-frontend-domain.com` (or your custom doma
 The `frontend/netlify.toml` file handles security headers, caching, and URL
 routing (`/upload/*` → `upload.html`, `/decrypt` → `decrypt.html`).
 
-**`API_BASE`** in each HTML file auto-detects the environment:
+**`API_BASE`** is read from a `<meta name="api-base">` tag in each HTML file:
 
-- `localhost` / `127.0.0.1` → `http://localhost:8000` (local dev)
-- Any other host → `https://your-api-domain.com` (production backend)
+```html
+<meta name="api-base" content="https://your-api-domain.com">
+```
+
+To point at a different backend, change the `content` attribute in
+`frontend/index.html`, `frontend/upload.html`, and `frontend/decrypt.html`.
+If the tag is absent, `API_BASE` falls back to `window.location.origin`.
+
+For local development, the user modifies the `content` attribute to `http://localhost:8000`
+(or uses the commented-out line already present in each file).
 
 ### Local development (frontend + backend)
 
@@ -311,11 +327,10 @@ sudo bash deploy/deploy.sh your-domain.com
 This script automatically:
 
 - Installs Python, Nginx, Certbot
-- Creates a dedicated `anonymizator` system user
+- Creates a dedicated `anonymizator` system user (no login shell, no home directory)
 - Sets up a Python virtual environment
 - Configures Nginx with HTTPS (Let's Encrypt)
-- Installs and enables a systemd service
-- Sets up hourly cleanup via cron
+- Installs and enables a systemd service (cleanup runs in-process, no cron needed)
 
 ### Post-deployment configuration
 
@@ -345,6 +360,31 @@ systemctl start anonymizator     # Start the service
 nginx -t                         # Test Nginx config
 certbot renew --dry-run          # Test SSL renewal
 ```
+
+---
+
+## Authentication model
+
+The researcher dashboard uses a stateless token model — there are no sessions, no cookies, and no challenge-response.
+
+### How `researcher_token` works
+
+1. The researcher submits their public key via `POST /api/tokens` (when sending an invitation).
+2. The server generates a stable, opaque `researcher_token` (UUID4) tied to that public key fingerprint and returns it in the response.
+3. The frontend stores the token in `localStorage` and sends it as the `X-Researcher-Token` HTTP header on every authenticated request (`GET /api/files`, `GET /api/files/{id}`, `DELETE /api/files/{id}`).
+4. The same token is reused on subsequent invitations with the same key — the researcher only needs to send one invitation to obtain it.
+
+### Rotating the token
+
+If the token is ever compromised, rotate it without changing keys:
+
+```bash
+curl -X POST https://your-api/api/researcher-token/rotate \
+  -H "X-Researcher-Token: <current_token>"
+# Returns: {"researcher_token": "<new_token>"}
+```
+
+Rate-limited to 5 requests/hour. After rotation, update the token in `localStorage` (or reload the page and send a new invitation to re-fetch it).
 
 ---
 

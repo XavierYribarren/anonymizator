@@ -28,11 +28,12 @@
             --shadow-card:         0 1px 2px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.04);
         }
     </style>
+    <meta name="api-base" content="https://anonymizator.barren.fr">
+    <!-- <meta name="api-base" content="http://localhost:8000"> -->
     <link rel="stylesheet" href="/static/style.css">
     <script>
-        const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-            ? 'http://localhost:8000'
-            : 'https://anonymizator.barren.fr';
+        const API_BASE = document.querySelector('meta[name="api-base"]')?.content
+            || window.location.origin;
     </script>
 </head>
 <body class="with-sidebar">
@@ -53,7 +54,7 @@
                style="opacity:0.3;cursor:not-allowed;pointer-events:none">
                 <i data-lucide="send" style="width:20px;height:20px"></i>
             </a>
-            <a href="/decrypt" class="sidebar-link" title="Déchiffrement">
+            <a href="/decrypt.html" class="sidebar-link" title="Déchiffrement">
                 <i data-lucide="file-lock-2" style="width:20px;height:20px"></i>
             </a>
         </nav>
@@ -226,7 +227,9 @@
         </div>
     </div>
 
-    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <script src="https://unpkg.com/lucide@0.511.0/dist/umd/lucide.js"
+            integrity="sha384-wiwa9EsLK6cl299O7+ll1zRJj8bda9w60syh4sE7vPQO6LAFGF9Fu6/9LKUGQi5S"
+            crossorigin="anonymous"></script>
     <script src="/static/i18n.js"></script>
     <script src="/static/crypto.js"></script>
     <script src="/static/app.js"></script>
@@ -252,16 +255,16 @@
                 const cfg = await resp.json();
                 if (!cfg.is_demo) return;
                 await I18n.init();
-                const emailInput = document.getElementById('researcher-email');
-                if (!emailInput) return;
-                emailInput.disabled = true;
-                emailInput.placeholder = I18n.t('demo.email_disabled_placeholder');
-                const note = document.createElement('p');
-                note.className = 'text-muted';
-                note.style.cssText = 'font-size:12px;margin-top:4px';
-                note.setAttribute('data-i18n', 'demo.email_disabled_note');
-                note.textContent = I18n.t('demo.email_disabled_note');
-                emailInput.parentElement.appendChild(note);
+                function applyDemoEmail(id) {
+                    const input = document.getElementById(id);
+                    console.log('[demo] applyDemoEmail:', id, '->', input);
+                    if (!input) return;
+                    input.disabled = true;
+                    input.removeAttribute('required');
+                    input.placeholder = I18n.t('demo.email_disabled_placeholder');
+                }
+                applyDemoEmail('researcher-email');
+                applyDemoEmail('collector-email');
                 I18n.applyTranslations();
             } catch {}
         });

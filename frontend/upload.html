@@ -28,11 +28,12 @@
             --shadow-card:         0 1px 2px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.04);
         }
     </style>
+    <!-- <meta name="api-base" content="http://localhost:8000"> -->
+    <meta name="api-base" content="https://anonymizator.barren.fr">
     <link rel="stylesheet" href="/static/style.css">
     <script>
-        const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-            ? 'http://localhost:8000'
-            : 'https://anonymizator.barren.fr';
+        const API_BASE = document.querySelector('meta[name="api-base"]')?.content
+            || window.location.origin;
 
         // MAX_FILE_SIZE_MB — default 2, updated from /api/config at startup
         window.MAX_FILE_SIZE_MB = 2;
@@ -139,7 +140,9 @@
         </div>
     </div>
 
-    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <script src="https://unpkg.com/lucide@0.511.0/dist/umd/lucide.js"
+            integrity="sha384-wiwa9EsLK6cl299O7+ll1zRJj8bda9w60syh4sE7vPQO6LAFGF9Fu6/9LKUGQi5S"
+            crossorigin="anonymous"></script>
     <script src="/static/i18n.js"></script>
     <script src="/static/crypto.js"></script>
     <script src="/static/app.js"></script>

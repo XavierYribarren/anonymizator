@@ -33,7 +33,7 @@ def generate_rsa_keypair(key_size: int = 4096):
     return private_key, private_key.public_key()
 
 
-def load_private_key(pem_bytes: bytes, password: bytes = None):
+def load_private_key(pem_bytes: bytes, password: bytes | None = None):
     """Load a PEM private key. Transparently handles OpenSSH format via paramiko."""
     if pem_bytes.startswith(b"-----BEGIN OPENSSH PRIVATE KEY-----"):
         try:

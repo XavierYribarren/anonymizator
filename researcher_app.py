@@ -59,6 +59,8 @@ def serve(
         port=port,
         log_level=log_level,
         reload=debug,
+        proxy_headers=True,
+        forwarded_allow_ips="127.0.0.1",
     )
 
 

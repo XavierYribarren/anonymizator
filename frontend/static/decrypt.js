@@ -32,10 +32,10 @@ async function init() {
     if (FILE_ID) {
         const fileId = FILE_ID;
         try {
-            const sessionToken = localStorage.getItem("anonymizator_session_token") || "";
+            const researcherToken = localStorage.getItem("anonymizator_researcher_token") || "";
             const resp = await fetch(
                 `${API_BASE}/api/files/${encodeURIComponent(fileId)}`,
-                { headers: { "X-Session-Token": sessionToken } }
+                { headers: { "X-Researcher-Token": researcherToken } }
             );
             if (resp.ok) {
                 const blob = await resp.blob();

@@ -98,27 +98,6 @@ class TestCleanupExpired:
         assert await db.get_token(token_id) is not None
 
 
-class TestSessionCleanup:
-    async def test_cleanup_expired_removes_expired_sessions(self):
-        import aiosqlite, uuid
-        token = str(uuid.uuid4())
-        async with aiosqlite.connect(db.DATABASE_PATH) as conn:
-            await conn.execute(
-                """INSERT INTO sessions (token, public_key_fingerprint,
-                   created_at, last_seen_at, expires_at)
-                   VALUES (?, ?, ?, ?, ?)""",
-                (token, "fp_cleanup_test", db._iso(db._now()),
-                 db._iso(db._now()), "2000-01-01T00:00:00+00:00"),
-            )
-            await conn.commit()
-        await cleanup.cleanup_expired()
-        assert await db.get_session(token) is None
-
-    async def test_cleanup_keeps_valid_sessions(self):
-        session = await db.create_session("fp_valid_session")
-        await cleanup.cleanup_expired()
-        assert await db.get_session(session["token"]) is not None
-
 
 class TestCleanupLoop:
     async def test_loop_calls_cleanup_periodically(self):
