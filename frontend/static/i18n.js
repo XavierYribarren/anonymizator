@@ -1,6 +1,7 @@
 const I18n = (() => {
     let _translations = {};
     let _locale = 'en';
+    let _initPromise = null;
 
     function detectLocale() {
         return (navigator.language || 'en').toLowerCase().split('-')[0];
@@ -16,18 +17,23 @@ const I18n = (() => {
         }
     }
 
-    async function init() {
-        const detected = detectLocale();
-        let translations = await loadLocale(detected);
-        if (!translations) {
-            translations = await loadLocale('en');
-            _locale = 'en';
-        } else {
-            _locale = detected;
+    function init() {
+        if (!_initPromise) {
+            _initPromise = (async () => {
+                const detected = detectLocale();
+                let translations = await loadLocale(detected);
+                if (!translations) {
+                    translations = await loadLocale('en');
+                    _locale = 'en';
+                } else {
+                    _locale = detected;
+                }
+                _translations = translations || {};
+                applyTranslations();
+                return _locale;
+            })();
         }
-        _translations = translations || {};
-        applyTranslations();
-        return _locale;
+        return _initPromise;
     }
 
     function t(key, params = {}) {

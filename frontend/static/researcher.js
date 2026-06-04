@@ -29,6 +29,8 @@ function apiFetch(path, options = {}) {
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 
 async function init() {
+    await I18n.init();
+
     const saved = localStorage.getItem(LS_PUB_KEY);
     if (saved) {
         await activateKey(saved, true);
