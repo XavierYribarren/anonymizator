@@ -102,11 +102,21 @@ class TestSendSyncFallback:
         with patch.dict(os.environ, {"SMTP_HOST": "", "SMTP_USER": "", "SMTP_PASSWORD": ""}):
             mailer._send_sync("to@test.com", "Subject", "<p>Body</p>")
 
-    def test_handles_smtp_connection_error_gracefully(self, monkeypatch):
+    def test_raises_on_connection_error(self, monkeypatch):
         monkeypatch.setenv("SMTP_HOST", "invalid.host.local")
         monkeypatch.setenv("SMTP_PORT", "587")
         monkeypatch.setenv("SMTP_USER", "u")
         monkeypatch.setenv("SMTP_PASSWORD", "p")
         monkeypatch.setenv("SMTP_STARTTLS", "true")
-        # Should not raise — error is logged as warning
-        mailer._send_sync("to@test.com", "Subject", "<p>Body</p>")
+        import pytest
+        with pytest.raises(Exception):
+            mailer._send_sync("to@test.com", "Subject", "<p>Body</p>")
+
+    async def test_send_is_graceful_after_all_retries(self, monkeypatch):
+        """_send must not propagate exceptions after exhausting retries."""
+        monkeypatch.setenv("SMTP_HOST", "invalid.host.local")
+        monkeypatch.setenv("SMTP_USER", "u")
+        monkeypatch.setenv("SMTP_PASSWORD", "p")
+        with patch("web.mailer._send_sync", side_effect=OSError("refused")):
+            with patch("asyncio.sleep", new_callable=AsyncMock):
+                await mailer._send("to@test.com", "Subject", "<p>Body</p>")

@@ -36,7 +36,7 @@ async def setup_and_teardown():
     async with aiosqlite.connect(db.DATABASE_PATH) as conn:
         await conn.execute("DELETE FROM uploaded_files")
         await conn.execute("DELETE FROM tokens")
-        await conn.execute("DELETE FROM sessions")
+        await conn.execute("DELETE FROM public_keys")
         await conn.commit()
     for f in glob.glob(os.path.join(os.environ["UPLOAD_DIR"], "*.enc")):
         try:
@@ -64,11 +64,11 @@ async def client():
 
 @pytest.fixture(scope="session")
 def sample_key_pair():
-    """2048-bit RSA key pair (smaller = faster tests, same API surface)."""
+    """4096-bit RSA key pair — matches the minimum key size enforced by POST /api/tokens."""
     from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.primitives.asymmetric import rsa
 
-    priv = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    priv = rsa.generate_private_key(public_exponent=65537, key_size=4096)
     pub_pem = priv.public_key().public_bytes(
         serialization.Encoding.PEM,
         serialization.PublicFormat.SubjectPublicKeyInfo,
@@ -83,7 +83,7 @@ def sample_key_pair():
 
 @pytest.fixture
 def sample_token(sample_key_pair):
-    """Factory that inserts a fresh token and returns (token_id, fingerprint)."""
+    """Factory that inserts a fresh token and returns (token_id, fingerprint, researcher_token)."""
     async def _create(
         researcher_email="researcher@test.com",
         collector_email="collector@test.com",
@@ -95,17 +95,8 @@ def sample_token(sample_key_pair):
             researcher_email=researcher_email,
             collector_email=collector_email,
         )
-        return token["id"], fp
+        return token["id"], fp, token["researcher_token"]
 
     return _create
 
 
-@pytest.fixture
-def sample_session(sample_key_pair):
-    """Factory that creates a session for the sample key pair's fingerprint."""
-    async def _create():
-        fp = _public_key_fingerprint(sample_key_pair["public"])
-        session = await db.create_session(fp)
-        return session["token"], fp
-
-    return _create

@@ -1,13 +1,20 @@
 """Pydantic request/response models."""
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr, field_validator
 
 
 class TokenCreate(BaseModel):
     public_key: str
-    researcher_email: Optional[str] = None
-    collector_email: str
+    researcher_email: Optional[EmailStr] = None
+    collector_email: Optional[EmailStr] = None
+
+    @field_validator("public_key")
+    @classmethod
+    def check_key_length(cls, v: str) -> str:
+        if len(v) > 8192:
+            raise ValueError("public_key trop long (max 8192 caractères)")
+        return v
 
 
 class TokenResponse(BaseModel):
@@ -30,5 +37,3 @@ class FileInfo(BaseModel):
     expires_at: str
 
 
-class SessionCreate(BaseModel):
-    public_key_fingerprint: str

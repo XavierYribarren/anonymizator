@@ -5,11 +5,13 @@ import hashlib
 import logging
 import os
 import re
+import unicodedata
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 import aiofiles
+from cryptography.hazmat.primitives.serialization import load_pem_public_key
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,7 +22,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from . import cleanup, database, mailer
-from .models import SessionCreate, TokenCreate
+from .models import TokenCreate
 
 load_dotenv()
 
@@ -46,13 +48,21 @@ UPLOAD_DIR = os.path.abspath(
 limiter = Limiter(key_func=get_remote_address)
 
 
+def _safe_filename(name: str) -> str:
+    name = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()
+    name = re.sub(r"[^\w.\-]", "_", name)
+    return name[:200] or "fichier"
+
+
 def _public_key_fingerprint(pem: str) -> str:
-    """SHA-256 of the DER bytes of a PEM public key, hex-encoded, first 16 chars."""
+
+
+    """SHA-256 of the DER bytes of a PEM public key, hex-encoded (256 bits)."""
     b64 = re.sub(r"-----[^-]+-----|[\s]", "", pem)
     if not b64:
         raise ValueError("Empty PEM payload")
     der = base64.b64decode(b64, validate=True)
-    return hashlib.sha256(der).hexdigest()[:16]
+    return hashlib.sha256(der).hexdigest()
 
 
 @asynccontextmanager
@@ -77,6 +87,7 @@ async def security_headers(request: Request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "same-origin"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
     if BASE_URL.startswith("https://"):
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
@@ -85,9 +96,9 @@ async def security_headers(request: Request, call_next):
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
-    allow_headers=["X-Session-Token", "Content-Type", "Accept"],
+    allow_headers=["X-Researcher-Token", "Content-Type", "Accept"],
     expose_headers=["Content-Disposition"],
 )
 
@@ -95,23 +106,23 @@ if BASE_URL.startswith("https://"):
     app.add_middleware(HTTPSRedirectMiddleware)
 
 
-# ── Session dependency ────────────────────────────────────────────────────────
+# ── Researcher-token dependency ───────────────────────────────────────────────
 
-async def _get_session(request: Request) -> dict:
-    token = request.headers.get("X-Session-Token")
+async def _get_researcher_token(request: Request) -> str:
+    token = request.headers.get("X-Researcher-Token", "").strip()
     if not token:
-        raise HTTPException(status_code=401, detail="Session token required")
-    session = await database.get_session(token)
-    if not session:
-        raise HTTPException(status_code=401, detail="Invalid or expired session")
-    await database.update_session_last_seen(token)
-    return session
+        raise HTTPException(status_code=401, detail="Token chercheur manquant")
+    fingerprint = await database.get_fingerprint_by_researcher_token(token)
+    if not fingerprint:
+        raise HTTPException(status_code=401, detail="Token chercheur invalide")
+    return fingerprint
 
 
 # ── Config API ────────────────────────────────────────────────────────────────
 
 @app.get("/api/config")
-async def get_config():
+@limiter.limit("30/minute")
+async def get_config(request: Request):
     """Public configuration consumed by the static frontend."""
     return {
         "max_file_size_mb": MAX_FILE_SIZE_MB,
@@ -129,8 +140,15 @@ async def get_config():
 async def create_token(request: Request, body: TokenCreate):
     try:
         fingerprint = _public_key_fingerprint(body.public_key)
+        pub_key = load_pem_public_key(body.public_key.encode())
+        if getattr(pub_key, "key_size", 0) < 4096:
+            raise HTTPException(
+                status_code=422, detail="La clé RSA doit faire au moins 4096 bits"
+            )
+    except HTTPException:
+        raise
     except Exception:
-        raise HTTPException(status_code=422, detail="Invalid public key format")
+        raise HTTPException(status_code=422, detail="Format de clé publique invalide")
     active = await database.count_active_tokens(fingerprint)
     if active >= MAX_ACTIVE_TOKENS:
         raise HTTPException(
@@ -154,11 +172,17 @@ async def create_token(request: Request, body: TokenCreate):
     asyncio.create_task(
         mailer.send_collector_invitation(body.collector_email, upload_url, token["expires_at"])
     )
-    return {"token_id": token["id"], "upload_url": upload_url, "expires_at": token["expires_at"]}
+    return {
+        "token_id": token["id"],
+        "upload_url": upload_url,
+        "expires_at": token["expires_at"],
+        "researcher_token": token["researcher_token"],
+    }
 
 
 @app.get("/api/tokens/{token_id}")
-async def get_token_status(token_id: str):
+@limiter.limit("60/hour")
+async def get_token_status(request: Request, token_id: str):
     token = await database.get_token(token_id)
     if not token:
         return {"valid": False, "used": False, "expired": False}
@@ -169,28 +193,27 @@ async def get_token_status(token_id: str):
 
 
 @app.get("/api/tokens/{token_id}/public-key")
-async def get_token_public_key(token_id: str):
+@limiter.limit("30/hour")
+async def get_token_public_key(request: Request, token_id: str):
     token = await database.get_token(token_id)
     if not token:
         raise HTTPException(status_code=404, detail="Token introuvable")
     now = datetime.now(timezone.utc).isoformat()
-    if token["expires_at"] < now:
-        raise HTTPException(status_code=404, detail="Token expiré")
+    if token["expires_at"] < now or token["public_key"] is None:
+        raise HTTPException(status_code=404, detail="Token expiré ou déjà utilisé")
     return {"public_key": token["public_key"]}
 
 
-# ── Sessions API ──────────────────────────────────────────────────────────────
+# ── Researcher token API ─────────────────────────────────────────────────────
 
-@app.post("/api/sessions")
-@limiter.limit("20/hour")
-async def create_session(request: Request, body: SessionCreate):
-    session = await database.create_session(body.public_key_fingerprint)
-    return {"session_token": session["token"]}
-
-
-@app.get("/api/sessions/me")
-async def get_session_status(session: dict = Depends(_get_session)):
-    return {"valid": True, "fingerprint": session["public_key_fingerprint"]}
+@app.post("/api/researcher-token/rotate")
+@limiter.limit("5/hour")
+async def rotate_token(
+    request: Request,
+    fingerprint: str = Depends(_get_researcher_token),
+):
+    new_token = await database.rotate_researcher_token(fingerprint)
+    return {"researcher_token": new_token}
 
 
 # ── Upload API ────────────────────────────────────────────────────────────────
@@ -203,6 +226,10 @@ async def upload_file(
     file: UploadFile = File(...),
     original_filename: str = Form(""),
 ):
+    origin = request.headers.get("Origin")
+    if origin is not None and origin not in ALLOWED_ORIGINS:
+        raise HTTPException(status_code=403, detail="Origin non autorisée")
+
     token = await database.get_token(token_id)
     if not token:
         raise HTTPException(status_code=404, detail="Token introuvable")
@@ -210,8 +237,6 @@ async def upload_file(
     now = datetime.now(timezone.utc).isoformat()
     if token["expires_at"] < now:
         raise HTTPException(status_code=410, detail="Token expiré")
-    if token["used_at"] is not None:
-        raise HTTPException(status_code=409, detail="Token déjà utilisé")
 
     max_bytes = MAX_FILE_SIZE_MB * 1024 * 1024
     data = await file.read(max_bytes + 1)
@@ -225,7 +250,7 @@ async def upload_file(
     async with aiofiles.open(stored_path, "wb") as fh:
         await fh.write(data)
 
-    fname = original_filename or file.filename or "fichier"
+    fname = _safe_filename(original_filename or file.filename or "fichier")
     file_id = await database.create_uploaded_file(
         token_id=token_id,
         original_filename=fname,
@@ -233,11 +258,19 @@ async def upload_file(
         file_size=len(data),
         public_key_fingerprint=token["public_key_fingerprint"],
     )
-    await database.mark_token_used(token_id, file_id)
+    if not await database.mark_token_used(token_id, file_id):
+        try:
+            os.remove(stored_path)
+        except FileNotFoundError:
+            pass
+        await database.delete_file(file_id)
+        raise HTTPException(status_code=409, detail="Token déjà utilisé")
 
     if token.get("researcher_email"):
         file_record = await database.get_file(file_id)
-        assert file_record is not None  # just inserted above
+        if file_record is None:
+            logger.error("file %s missing immediately after insert", file_id)
+            return {"success": True}
         asyncio.create_task(
             mailer.send_researcher_notification(
                 to=token["researcher_email"],
@@ -255,28 +288,29 @@ async def upload_file(
 
 @app.get("/api/files")
 @limiter.limit("60/hour")
-async def list_files(request: Request, session: dict = Depends(_get_session)):
-    return await database.get_files_by_fingerprint(session["public_key_fingerprint"])
+async def list_files(request: Request, fingerprint: str = Depends(_get_researcher_token)):
+    return await database.get_files_by_fingerprint(fingerprint)
 
 
 @app.get("/api/files/{file_id}")
 @limiter.limit("30/hour")
-async def download_file(request: Request, file_id: str, session: dict = Depends(_get_session)):
+async def download_file(request: Request, file_id: str, fingerprint: str = Depends(_get_researcher_token)):
     record = await database.get_file(file_id)
-    if not record or record["public_key_fingerprint"] != session["public_key_fingerprint"]:
+    if not record or record["public_key_fingerprint"] != fingerprint:
         raise HTTPException(status_code=404, detail="Fichier introuvable")
     path = os.path.join(UPLOAD_DIR, record["stored_filename"])
     if not os.path.exists(path):
         raise HTTPException(status_code=404, detail="Fichier introuvable sur le disque")
     fname = (record["original_filename"] or "fichier") + ".enc"
+    asyncio.create_task(database.mark_file_downloaded(file_id))
     return FileResponse(path, filename=fname, media_type="application/octet-stream")
 
 
 @app.delete("/api/files/{file_id}")
 @limiter.limit("10/hour")
-async def delete_file(request: Request, file_id: str, session: dict = Depends(_get_session)):
+async def delete_file(request: Request, file_id: str, fingerprint: str = Depends(_get_researcher_token)):
     record = await database.get_file(file_id)
-    if not record or record["public_key_fingerprint"] != session["public_key_fingerprint"]:
+    if not record or record["public_key_fingerprint"] != fingerprint:
         raise HTTPException(status_code=404, detail="Fichier introuvable")
     path = os.path.join(UPLOAD_DIR, record["stored_filename"])
     try:

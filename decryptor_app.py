@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import sys
+import webbrowser
 
 from cryptography.hazmat.primitives import serialization
 from PyQt6.QtCore import Qt
@@ -16,7 +17,7 @@ import crypto_utils
 
 logger = logging.getLogger(__name__)
 
-CONFIG_FILE = "anonymizator_config.json"
+CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "anonymizator_config.json")
 # Stores only the path to the private key file — never the key itself.
 
 
@@ -30,6 +31,7 @@ def _load_config() -> dict:
 def _save_config(data: dict):
     with open(CONFIG_FILE, "w") as f:
         json.dump(data, f)
+
 
 
 class DropLabel(QLabel):
@@ -93,6 +95,11 @@ class DecryptorApp(QMainWindow):
         self.toggle_btn.clicked.connect(self.toggle_private_key)
         layout.addWidget(self.toggle_btn)
 
+        self.dashboard_btn = QPushButton("Ouvrir le dashboard web")
+        self.dashboard_btn.setEnabled(False)
+        self.dashboard_btn.clicked.connect(self.open_dashboard)
+        layout.addWidget(self.dashboard_btn)
+
         # Private key display (hidden by default)
         self.priv_display = QPlainTextEdit()
         self.priv_display.setPlaceholderText("Clé privée…")
@@ -137,6 +144,8 @@ class DecryptorApp(QMainWindow):
         self.status_dot.setStyleSheet(
             f"background-color: {color}; border-radius: 8px;"
         )
+        if hasattr(self, "dashboard_btn"):
+            self.dashboard_btn.setEnabled(loaded)
 
     def _auto_load_saved_key(self):
         config = _load_config()
@@ -194,14 +203,15 @@ class DecryptorApp(QMainWindow):
         self.toggle_btn.setEnabled(True)
         self.copy_btn.setEnabled(True)
         self._set_status(True)
+        key_bits = getattr(private_key, "key_size", 0)
         self.status_text.setText(
-            f"Clé RSA-{private_key.key_size} bits — {os.path.basename(path)}"
+            f"Clé RSA-{key_bits} bits — {os.path.basename(path)}"
         )
 
         if not silent:
             _save_config({"private_key_path": path})
             QMessageBox.information(
-                self, "Succès", f"Clé RSA-{private_key.key_size} bits chargée !"
+                self, "Succès", f"Clé RSA-{key_bits} bits chargée !"
             )
 
     # ------------------------------------------------------------------
@@ -240,7 +250,7 @@ class DecryptorApp(QMainWindow):
         )
         private_pem = private_key.private_bytes(
             encoding=serialization.Encoding.PEM,
-            format=serialization.PrivateFormat.TraditionalOpenSSL,
+            format=serialization.PrivateFormat.PKCS8,
             encryption_algorithm=enc_algo,
         ).decode("utf-8")
 
@@ -317,9 +327,14 @@ class DecryptorApp(QMainWindow):
 
     def copy_public_key(self):
         pem = self.pub_display.toPlainText()
-        if pem:
-            QApplication.clipboard().setText(pem)
+        clipboard = QApplication.clipboard()
+        if pem and clipboard is not None:
+            clipboard.setText(pem)
             QMessageBox.information(self, "Copié", "Clé publique copiée dans le presse-papier.")
+
+    def open_dashboard(self):
+        base_url = _load_config().get("base_url", "http://localhost:8000").rstrip("/")
+        webbrowser.open(base_url)
 
     def decrypt_file(self, file_path: str):
         if not self.private_key:

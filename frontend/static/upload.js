@@ -101,7 +101,7 @@ function setupUpload(tokenId) {
             dropZone.classList.remove("hidden");
             dropZone.classList.add("error");
             dropZone.innerHTML =
-                `<strong>${I18n.t("common.error")}</strong><br><span class="drop-zone-hint">${err.message}</span>`;
+                `<strong>${I18n.t("common.error")}</strong><br><span class="drop-zone-hint">${escapeHtml(err.message)}</span>`;
         }
     });
 }

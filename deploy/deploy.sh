@@ -38,15 +38,24 @@ python3 -m venv "$APP_DIR/venv"
 "$APP_DIR/venv/bin/pip" install -q --upgrade pip setuptools
 "$APP_DIR/venv/bin/pip" install -q -r "$APP_DIR/web/requirements_web.txt"
 
-# 5. Uploads directory
+# 5. Uploads directory, data directory and permissions
 mkdir -p "$APP_DIR/uploads"
-chown -R "$APP_USER:$APP_USER" "$APP_DIR"
+mkdir -p "$APP_DIR/data"
+chown -R root:root "$APP_DIR"
+chown "$APP_USER:$APP_USER" "$APP_DIR/uploads"
 chmod 750 "$APP_DIR/uploads"
+chown "$APP_USER:$APP_USER" "$APP_DIR/data"
+chmod 750 "$APP_DIR/data"
+touch "$APP_DIR/data/anonymizator.db"
+chown "$APP_USER:$APP_USER" "$APP_DIR/data/anonymizator.db"
+chmod 640 "$APP_DIR/data/anonymizator.db"
 
 # 6. .env file (create from example if missing)
 if [ ! -f "$APP_DIR/.env" ]; then
     cp "$APP_DIR/.env.example" "$APP_DIR/.env"
     sed -i "s|BASE_URL=http://localhost:8000|BASE_URL=https://$DOMAIN|g" "$APP_DIR/.env"
+    chmod 600 "$APP_DIR/.env"
+    chown "$APP_USER:$APP_USER" "$APP_DIR/.env"
     echo "→ .env created. Edit $APP_DIR/.env to configure SMTP and other settings."
 fi
 
@@ -68,10 +77,6 @@ cp "$APP_DIR/deploy/anonymizator.service" "/etc/systemd/system/anonymizator.serv
 systemctl daemon-reload
 systemctl enable anonymizator
 systemctl restart anonymizator
-
-# 10. Hourly cleanup via cron
-echo "→ Setting up cleanup cron..."
-(crontab -l 2>/dev/null; echo "0 * * * * $APP_DIR/venv/bin/python $APP_DIR/scripts/cleanup.py >> /var/log/anonymizator_cleanup.log 2>&1") | crontab -
 
 echo ""
 echo "=== Deployment complete ==="

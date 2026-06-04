@@ -15,6 +15,15 @@ class TestTokenAPI:
         assert "upload_url" in data
         assert data["upload_url"].startswith("http")
         assert "expires_at" in data
+        assert "researcher_token" in data
+        assert len(data["researcher_token"]) == 36  # UUID4
+
+    async def test_create_token_same_key_reuses_researcher_token(self, client, sample_key_pair):
+        """Two tokens for the same public key share the same researcher_token."""
+        payload = {"public_key": sample_key_pair["public"]}
+        r1 = (await client.post("/api/tokens", json=payload)).json()
+        r2 = (await client.post("/api/tokens", json=payload)).json()
+        assert r1["researcher_token"] == r2["researcher_token"]
 
     async def test_create_token_no_researcher_email(self, client, sample_key_pair):
         resp = await client.post("/api/tokens", json={
@@ -34,10 +43,10 @@ class TestTokenAPI:
         resp = await client.post("/api/tokens", json={
             "public_key": sample_key_pair["public"],
         })
-        assert resp.status_code == 422
+        assert resp.status_code == 200
 
     async def test_get_token_valid(self, client, sample_token):
-        token_id, _ = await sample_token()
+        token_id, *_ = await sample_token()
         resp = await client.get(f"/api/tokens/{token_id}")
         assert resp.status_code == 200
         data = resp.json()
@@ -51,7 +60,7 @@ class TestTokenAPI:
         assert resp.json()["valid"] is False
 
     async def test_get_token_public_key(self, client, sample_token, sample_key_pair):
-        token_id, _ = await sample_token()
+        token_id, *_ = await sample_token()
         resp = await client.get(f"/api/tokens/{token_id}/public-key")
         assert resp.status_code == 200
         assert "public_key" in resp.json()
@@ -61,38 +70,9 @@ class TestTokenAPI:
         assert resp.status_code == 404
 
 
-class TestSessionsAPI:
-    async def test_create_session_returns_token(self, client):
-        resp = await client.post("/api/sessions", json={
-            "public_key_fingerprint": "abcdef1234567890",
-        })
-        assert resp.status_code == 200
-        data = resp.json()
-        assert "session_token" in data
-        assert len(data["session_token"]) == 36  # UUID4
-
-    async def test_get_session_me_valid(self, client, sample_session):
-        session_token, fp = await sample_session()
-        resp = await client.get("/api/sessions/me",
-                                headers={"X-Session-Token": session_token})
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["valid"] is True
-        assert data["fingerprint"] == fp
-
-    async def test_get_session_me_without_token_returns_401(self, client):
-        resp = await client.get("/api/sessions/me")
-        assert resp.status_code == 401
-
-    async def test_get_session_me_invalid_token_returns_401(self, client):
-        resp = await client.get("/api/sessions/me",
-                                headers={"X-Session-Token": "not-a-real-token"})
-        assert resp.status_code == 401
-
-
 class TestUploadAPI:
     async def test_upload_success(self, client, sample_token):
-        token_id, _ = await sample_token()
+        token_id, *_ = await sample_token()
         enc = b"\x00" * 540
         resp = await client.post(
             f"/api/upload/{token_id}",
@@ -103,7 +83,7 @@ class TestUploadAPI:
         assert resp.json()["success"] is True
 
     async def test_upload_marks_token_used(self, client, sample_token):
-        token_id, _ = await sample_token()
+        token_id, *_ = await sample_token()
         enc = b"\x00" * 540
         await client.post(
             f"/api/upload/{token_id}",
@@ -113,7 +93,7 @@ class TestUploadAPI:
         assert status_resp.json()["used"] is True
 
     async def test_upload_already_used_token_returns_409(self, client, sample_token):
-        token_id, _ = await sample_token()
+        token_id, *_ = await sample_token()
         enc = b"\x00" * 540
         await client.post(
             f"/api/upload/{token_id}",
@@ -135,7 +115,7 @@ class TestUploadAPI:
     async def test_upload_file_too_large_returns_413(self, client, sample_token):
         import os
         max_mb = int(os.environ["MAX_FILE_SIZE_MB"])
-        token_id, _ = await sample_token()
+        token_id, *_ = await sample_token()
         too_large = b"\x00" * ((max_mb + 1) * 1024 * 1024)
         resp = await client.post(
             f"/api/upload/{token_id}",
@@ -145,20 +125,19 @@ class TestUploadAPI:
 
 
 class TestFilesAPI:
-    async def test_list_files_empty_for_new_session(self, client, sample_session):
-        session_token, _ = await sample_session()
+    async def test_list_files_empty_for_token(self, client, sample_token):
+        _, _, rt = await sample_token()
         resp = await client.get("/api/files",
-                                headers={"X-Session-Token": session_token})
+                                headers={"X-Researcher-Token": rt})
         assert resp.status_code == 200
         assert resp.json() == []
 
-    async def test_list_files_without_session_returns_401(self, client):
+    async def test_list_files_without_token_returns_401(self, client):
         resp = await client.get("/api/files")
         assert resp.status_code == 401
 
-    async def test_list_files_after_upload(self, client, sample_token, sample_session):
-        token_id, _ = await sample_token()
-        session_token, _ = await sample_session()
+    async def test_list_files_after_upload(self, client, sample_token):
+        token_id, _, rt = await sample_token()
         enc = b"\x00" * 540
         await client.post(
             f"/api/upload/{token_id}",
@@ -166,63 +145,57 @@ class TestFilesAPI:
             data={"original_filename": "test.csv"},
         )
         resp = await client.get("/api/files",
-                                headers={"X-Session-Token": session_token})
+                                headers={"X-Researcher-Token": rt})
         assert resp.status_code == 200
         files = resp.json()
         assert len(files) == 1
         assert files[0]["original_filename"] == "test.csv"
 
-    async def test_download_file_without_session_returns_401(self, client):
+    async def test_download_file_without_token_returns_401(self, client):
         resp = await client.get("/api/files/any-file-id")
         assert resp.status_code == 401
 
-    async def test_download_file_wrong_session_returns_404(self, client, sample_token):
-        from web import database as db
-        token_id, _ = await sample_token()
+    async def test_download_file_wrong_token_returns_401(self, client, sample_token):
+        token_id, *_ = await sample_token()
         enc = b"\x00" * 540
         await client.post(
             f"/api/upload/{token_id}",
             files={"file": ("f.enc", enc, "application/octet-stream")},
         )
-        # Session for a different fingerprint
-        other_session = await db.create_session("completely_different_fp")
         resp = await client.get(
-            f"/api/files/any-id",
-            headers={"X-Session-Token": other_session["token"]},
+            "/api/files/any-id",
+            headers={"X-Researcher-Token": "00000000-0000-0000-0000-000000000000"},
         )
-        assert resp.status_code == 404
+        assert resp.status_code == 401
 
-    async def test_delete_file_wrong_session_returns_404(self, client, sample_token):
-        from web import database as db
-        token_id, _ = await sample_token()
+    async def test_delete_file_wrong_token_returns_401(self, client, sample_token):
+        token_id, *_ = await sample_token()
         enc = b"\x00" * 540
         await client.post(
             f"/api/upload/{token_id}",
             files={"file": ("f.enc", enc, "application/octet-stream")},
         )
-        other_session = await db.create_session("other_fp")
         resp = await client.delete(
             "/api/files/any-id",
-            headers={"X-Session-Token": other_session["token"]},
+            headers={"X-Researcher-Token": "00000000-0000-0000-0000-000000000001"},
         )
-        assert resp.status_code == 404
+        assert resp.status_code == 401
 
-    async def test_delete_file_correct_session(self, client, sample_token, sample_session):
-        token_id, _ = await sample_token()
-        session_token, _ = await sample_session()
+    async def test_delete_file_correct_token(self, client, sample_token):
+        token_id, _, rt = await sample_token()
         enc = b"\x00" * 540
         await client.post(
             f"/api/upload/{token_id}",
             files={"file": ("f.enc", enc, "application/octet-stream")},
         )
         files = (await client.get("/api/files",
-                                  headers={"X-Session-Token": session_token})).json()
+                                  headers={"X-Researcher-Token": rt})).json()
         file_id = files[0]["id"]
         resp = await client.delete(f"/api/files/{file_id}",
-                                   headers={"X-Session-Token": session_token})
+                                   headers={"X-Researcher-Token": rt})
         assert resp.status_code == 200
         remaining = (await client.get("/api/files",
-                                      headers={"X-Session-Token": session_token})).json()
+                                      headers={"X-Researcher-Token": rt})).json()
         assert remaining == []
 
 

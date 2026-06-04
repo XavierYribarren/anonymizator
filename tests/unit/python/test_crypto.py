@@ -131,9 +131,9 @@ class TestEncryptDecrypt:
 # ── Fingerprint ───────────────────────────────────────────────────────────────
 
 class TestFingerprint:
-    def test_length_is_16(self):
+    def test_length_is_64(self):
         _, _, pub_pem, _ = _make_key_pair()
-        assert len(_public_key_fingerprint(pub_pem)) == 16
+        assert len(_public_key_fingerprint(pub_pem)) == 64
 
     def test_is_lowercase_hex(self):
         _, _, pub_pem, _ = _make_key_pair()
