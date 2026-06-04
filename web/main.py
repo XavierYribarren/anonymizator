@@ -174,14 +174,7 @@ async def create_token(request: Request, body: TokenCreate):
         researcher_email=body.researcher_email,
         collector_email=body.collector_email,
     )
-    # Dev local uses query string (?token=) because no redirect server is running.
-    # Production Netlify uses path format (/upload/<id>) handled by netlify.toml redirect.
-    _is_local = "localhost" in FRONTEND_URL or "127.0.0.1" in FRONTEND_URL
-    upload_url = (
-        f"{FRONTEND_URL}/upload.html?token={token['id']}"
-        if _is_local
-        else f"{FRONTEND_URL}/upload/{token['id']}"
-    )
+    upload_url = f"{FRONTEND_URL}/upload.html?token={token['id']}"
     asyncio.create_task(
         mailer.send_collector_invitation(body.collector_email, upload_url, token["expires_at"])
     )
