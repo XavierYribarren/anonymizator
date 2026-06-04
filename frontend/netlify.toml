@@ -8,7 +8,7 @@
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
     Permissions-Policy = "camera=(), microphone=(), geolocation=()"
-    Content-Security-Policy = "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self' https://unpkg.com; img-src 'self' data:; connect-src 'self' https://anonymizator.barren.fr"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' https://unpkg.com 'sha256-nSokawc4Q1QWarjsYu4KOc3H5g947dqGV9gylr7GVjk=' 'sha256-/XtLSdxaZKZPBeWJhZHrHTVONgxNV1fOILJDPSYRZS0=' 'sha256-jV3i0JBa9cS+lTgh4trADnOc1tGK8qfItJBtHCZwHyQ='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://anonymizator.barren.fr; frame-ancestors 'none'"
 
 [[headers]]
   for = "/static/*"
