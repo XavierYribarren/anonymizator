@@ -399,6 +399,10 @@ Anonymizator supports GDPR pseudonymisation requirements (Article 4(5)) by ensur
   computationally infeasible
 - Files are automatically purged after a configurable retention period
 
-## License
+## Credits
+This project takes its origin at the [Sical team of the LIRIS lab (UMR 5205)](https://sical.liris.cnrs.fr), where the need for such an application emerged and the encryptor/decryptor apps where specified. The first iterations where funded by the [ASLAN LabEx](https://aslan.universite-lyon.fr/).
 
+Then, the code was overhauled and the [web UI/architecture](ARCHITECTURE.md) specified and developped autonomously by [XavierYribarren](https://github.com/XavierYribarren).
+
+## License
 MIT
