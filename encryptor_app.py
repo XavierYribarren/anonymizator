@@ -54,6 +54,7 @@ class EncryptorApp(QMainWindow):
         self.encrypted_data = None
         self.source_path = None
         self.key_input = None  # only set in developer mode
+        self.key = None
 
         layout = QVBoxLayout()
 
@@ -76,34 +77,52 @@ class EncryptorApp(QMainWindow):
         self.save_button = QPushButton("Enregistrer le fichier chiffré")
         self.save_button.setEnabled(False)
         self.save_button.clicked.connect(self.save_encrypted_file)
+        self.key_input.textChanged.connect(self._try_load_key)
         layout.addWidget(self.save_button)
 
         central = QWidget()
         central.setLayout(layout)
         self.setCentralWidget(central)
 
+    def _try_load_key(self):
+        self.key_input.textChanged.disconnect(self._try_load_key)
+        pem = self.key_input.toPlainText()
+        try:
+            self.key = crypto_utils.load_public_key(pem)
+            self.key_input.clear()
+            self.key_input.insertPlainText(str(self.key))
+            self.key_input.setStyleSheet("background-color: #777777;")
+        except Exception as e:
+            self.key = None
+            print('not loaded', pem, e)
+        self.key_input.textChanged.connect(self._try_load_key)
+        return self.key
+
+
     def _get_public_key(self):
         if EMBEDDED_PUBLIC_KEY:
             return crypto_utils.load_public_key(EMBEDDED_PUBLIC_KEY)
         if self.key_input is None:
             return None
-        pem = self.key_input.toPlainText()
-        if not pem:
-            QMessageBox.warning(
-                self, "Clé Manquante",
-                "Veuillez coller la clé publique avant de chiffrer.",
-            )
-            return None
-        key = crypto_utils.load_public_key(pem)
-        if getattr(key, "key_size", 0) < 4096:
-            QMessageBox.warning(
-                self, "Clé faible",
-                f"La clé RSA fait {getattr(key, 'key_size', '?')} bits.\n"
-                "Une clé d'au moins 4096 bits est recommandée.\n\n"
-                "Le chiffrement est annulé.",
-            )
-            return None
-        return key
+        if self.key == None:
+            pem = self.key_input.toPlainText()
+            if not pem:
+                QMessageBox.warning(
+                    self, "Clé Manquante",
+                    "Veuillez coller la clé publique avant de chiffrer.",
+                )
+                return None
+            key = crypto_utils.load_public_key(pem)
+            if getattr(key, "key_size", 0) < 4096:
+                QMessageBox.warning(
+                    self, "Clé faible",
+                    f"La clé RSA fait {getattr(key, 'key_size', '?')} bits.\n"
+                    "Une clé d'au moins 4096 bits est recommandée.\n\n"
+                    "Le chiffrement est annulé.",
+                )
+                return None
+            return key
+        return self.key
 
     def encrypt_file(self, file_path: str):
         try:
