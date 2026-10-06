@@ -49,7 +49,7 @@ class EncryptorApp(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Anonymizator — Chiffrement")
-        self.setGeometry(100, 100, 600, 440)
+        self.setGeometry(400, 400, 600, 240)
 
         self.encrypted_data = None
         self.source_path = None
@@ -74,11 +74,7 @@ class EncryptorApp(QMainWindow):
         )
         layout.addWidget(self.drop_label)
 
-        self.save_button = QPushButton("Enregistrer le fichier chiffré")
-        self.save_button.setEnabled(False)
-        self.save_button.clicked.connect(self.save_encrypted_file)
         self.key_input.textChanged.connect(self._try_load_key)
-        layout.addWidget(self.save_button)
 
         central = QWidget()
         central.setLayout(layout)
@@ -97,7 +93,7 @@ class EncryptorApp(QMainWindow):
             self.key_input.setStyleSheet("background-color: #777777;")
         except Exception as e:
             self.key = None
-            #print('not loaded', p_key, e)
+            print('not loaded', p_key, e)
         self.key_input.textChanged.connect(self._try_load_key)
         return self.key
 
@@ -109,7 +105,7 @@ class EncryptorApp(QMainWindow):
         elif self.key == None:
             QMessageBox.warning(
                 self, "Clé Manquante",
-                "Veuillez coller la clé publique avant de chiffrer.",
+                "Veuillez saisir la clé publique avant de chiffrer.",
             )
         elif getattr(self.key, "key_size", 0) < 4096:
                 #On n'annule plus le chiffrement : c'est la responsabilité du chercheur
@@ -117,7 +113,8 @@ class EncryptorApp(QMainWindow):
                 QMessageBox.warning(
                     self, "Clé faible",
                     f"La clé RSA fait {getattr(self.key, 'key_size', '?')} bits.\n"
-                    "Une clé d'au moins 4096 bits est recommandée.",
+                    "Une clé d'au moins 4096 bits est recommandée.\n\n"
+                    "Vous pouvez en informer les collègues chercheurs avant de leur envoyer les données",
                 )
         return self.key
 
@@ -148,37 +145,14 @@ class EncryptorApp(QMainWindow):
 
         # Auto-save next to the source file; fall back to manual save on error
         enc_path = file_path + ".enc"
-        try:
-            with open(enc_path, "wb") as fh:
-                fh.write(self.encrypted_data)
-            self.drop_label.setText(
-                f"Chiffrement réussi !\nFichier enregistré :\n{enc_path}"
-            )
-            QMessageBox.information(
-                self, "Succès", f"Fichier chiffré enregistré :\n{enc_path}"
-            )
-            self.save_button.setEnabled(False)
-        except Exception:
-            logger.warning("Auto-save to %s failed, enabling manual save", enc_path)
-            self.drop_label.setText(f"Chiffrement réussi !\n{os.path.basename(file_path)}")
-            self.save_button.setEnabled(True)
-
-    def save_encrypted_file(self):
-        if not self.encrypted_data:
-            return
-        default = (self.source_path or "") + ".enc"
-        save_path, _ = QFileDialog.getSaveFileName(
-            self, "Enregistrer le fichier chiffré", default,
-            "Fichiers chiffrés (*.enc);;Tous les fichiers (*)",
+        with open(enc_path, "wb") as fh:
+            fh.write(self.encrypted_data)
+        self.drop_label.setText(
+            f"Chiffrement réussi !\nFichier enregistré :\n{enc_path}"
         )
-        if save_path:
-            try:
-                with open(save_path, "wb") as fh:
-                    fh.write(self.encrypted_data)
-                QMessageBox.information(self, "Succès", f"Fichier chiffré enregistré :\n{save_path}")
-            except Exception as exc:
-                QMessageBox.critical(self, "Erreur", f"Impossible d'enregistrer.\n{exc}")
-
+        QMessageBox.information(
+            self, "Succès", f"Fichier chiffré enregistré :\n{enc_path}"
+        )
 
 def main():
     parser = argparse.ArgumentParser(description="Anonymizator — encryptor app")
