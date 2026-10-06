@@ -53,19 +53,10 @@ def load_private_key(pem_bytes: bytes, password: bytes | None = None):
 
 def load_public_key(p_key: str):
     """Load a public key (PEM or SSH)"""
-    p_key = p_key.strip()
-    if os.path.exists(p_key):
-        print('exists')
-        with open(p_key, "r") as key_file:
-            p_key = key_file.read()
-            print(p_key)
-    print(p_key)
     if p_key[0:4]=="ssh-":
-        print('ssh')
         res = serialization.load_ssh_public_key(p_key.encode("utf-8"))
     else:
         res = serialization.load_pem_public_key(p_key.encode("utf-8"))
-    print(res)
     return res
 
 

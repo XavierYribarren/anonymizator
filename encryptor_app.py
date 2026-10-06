@@ -86,53 +86,50 @@ class EncryptorApp(QMainWindow):
 
     def _try_load_key(self):
         self.key_input.textChanged.disconnect(self._try_load_key)
-        pem = self.key_input.toPlainText()
+        p_key = self.key_input.toPlainText().strip()
         try:
-            self.key = crypto_utils.load_public_key(pem)
+            if os.path.exists(p_key):
+                with open(p_key, "r") as key_file:
+                    p_key = key_file.read()
+            self.key = crypto_utils.load_public_key(p_key)
             self.key_input.clear()
-            self.key_input.insertPlainText(str(self.key))
+            self.key_input.insertPlainText(p_key)
             self.key_input.setStyleSheet("background-color: #777777;")
         except Exception as e:
             self.key = None
-            print('not loaded', pem, e)
+            #print('not loaded', p_key, e)
         self.key_input.textChanged.connect(self._try_load_key)
         return self.key
 
 
     def _get_public_key(self):
+        # the key has been loaded by _try_load_key, unless it is embedded
         if EMBEDDED_PUBLIC_KEY:
-            return crypto_utils.load_public_key(EMBEDDED_PUBLIC_KEY)
-        if self.key_input is None:
-            return None
-        if self.key == None:
-            pem = self.key_input.toPlainText()
-            if not pem:
-                QMessageBox.warning(
-                    self, "Clé Manquante",
-                    "Veuillez coller la clé publique avant de chiffrer.",
-                )
-                return None
-            key = crypto_utils.load_public_key(pem)
-            if getattr(key, "key_size", 0) < 4096:
+            self.key = crypto_utils.load_public_key(EMBEDDED_PUBLIC_KEY)
+        elif self.key == None:
+            QMessageBox.warning(
+                self, "Clé Manquante",
+                "Veuillez coller la clé publique avant de chiffrer.",
+            )
+        elif getattr(self.key, "key_size", 0) < 4096:
+                #On n'annule plus le chiffrement : c'est la responsabilité du chercheur
+                #pas de l'expérimentateur
                 QMessageBox.warning(
                     self, "Clé faible",
-                    f"La clé RSA fait {getattr(key, 'key_size', '?')} bits.\n"
-                    "Une clé d'au moins 4096 bits est recommandée.\n\n"
-                    "Le chiffrement est annulé.",
+                    f"La clé RSA fait {getattr(self.key, 'key_size', '?')} bits.\n"
+                    "Une clé d'au moins 4096 bits est recommandée.",
                 )
-                return None
-            return key
         return self.key
 
     def encrypt_file(self, file_path: str):
         try:
-            public_key = self._get_public_key()
+            self._get_public_key() #stored in self.key
         except Exception as exc:
             QMessageBox.critical(
                 self, "Erreur de Clé", f"Impossible de charger la clé publique.\n{exc}"
             )
             return
-        if public_key is None:
+        if self.key is None:
             return
 
         try:
@@ -143,7 +140,7 @@ class EncryptorApp(QMainWindow):
             return
 
         try:
-            self.encrypted_data = crypto_utils.encrypt_file_hybrid(data, public_key)
+            self.encrypted_data = crypto_utils.encrypt_file_hybrid(data, self.key)
             self.source_path = file_path
         except Exception as exc:
             QMessageBox.critical(self, "Erreur de Chiffrement", f"Chiffrement échoué.\n{exc}")
