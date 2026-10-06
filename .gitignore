@@ -17,6 +17,7 @@ __pycache__/
 venv/
 .venv/
 env/
+env*/
 
 # PyInstaller build artifacts
 build/

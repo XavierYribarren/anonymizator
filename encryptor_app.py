@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import argparse
 import logging
 import os
@@ -57,18 +58,18 @@ class EncryptorApp(QMainWindow):
         layout = QVBoxLayout()
 
         if EMBEDDED_PUBLIC_KEY:
-            layout.addWidget(QLabel("Prêt — glissez votre fichier ci-dessous."))
+            layout.addWidget(QLabel("Prêt — glissez le fichier à chiffrer ci-dessous."))
         else:
-            layout.addWidget(QLabel("Clé publique du chercheur (format PEM) :"))
+            layout.addWidget(QLabel("Clé publique du chercheur (PEM ou SSH) :"))
             self.key_input = QPlainTextEdit()
             self.key_input.setPlaceholderText(
-                "Collez ici la clé publique reçue du chercheur…"
+                "Coller ou faire glisser ici la clé publique reçue du chercheur…"
             )
             self.key_input.setFixedHeight(100)
             layout.addWidget(self.key_input)
 
         self.drop_label = DropLabel(
-            "Glissez un fichier ici pour le chiffrer", self.encrypt_file
+            "Glisser ici un fichier pour le chiffrer", self.encrypt_file
         )
         layout.addWidget(self.drop_label)
 
@@ -86,7 +87,7 @@ class EncryptorApp(QMainWindow):
             return crypto_utils.load_public_key(EMBEDDED_PUBLIC_KEY)
         if self.key_input is None:
             return None
-        pem = self.key_input.toPlainText().strip()
+        pem = self.key_input.toPlainText()
         if not pem:
             QMessageBox.warning(
                 self, "Clé Manquante",

@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Anonymizator — CLI entry point (desktop mode)."""
 import socket
 import threading
