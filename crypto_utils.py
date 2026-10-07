@@ -51,9 +51,13 @@ def load_private_key(pem_bytes: bytes, password: bytes | None = None):
     return serialization.load_pem_private_key(pem_bytes, password=password)
 
 
-def load_public_key(pem_str: str):
-    """Load a PEM public key."""
-    return serialization.load_pem_public_key(pem_str.encode("utf-8"))
+def load_public_key(p_key: str):
+    """Load a public key (PEM or SSH)"""
+    if p_key[0:4]=="ssh-":
+        res = serialization.load_ssh_public_key(p_key.encode("utf-8"))
+    else:
+        res = serialization.load_pem_public_key(p_key.encode("utf-8"))
+    return res
 
 
 def encrypt_file_hybrid(data: bytes, public_key) -> bytes:
