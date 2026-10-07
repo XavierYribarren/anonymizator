@@ -68,14 +68,12 @@ class EncryptorApp(QMainWindow):
             )
             self.key_input.setFixedHeight(100)
             layout.addWidget(self.key_input)
+            self.key_input.textChanged.connect(self._try_load_key)
 
         self.drop_label = DropLabel(
             "Glisser ici un fichier pour le chiffrer", self.encrypt_file
         )
         layout.addWidget(self.drop_label)
-
-        self.key_input.textChanged.connect(self._try_load_key)
-
         central = QWidget()
         central.setLayout(layout)
         self.setCentralWidget(central)
